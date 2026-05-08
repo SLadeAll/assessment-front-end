@@ -305,8 +305,26 @@ function App() {
 
   if (!isAuthenticated) {
     return (
-      <div className="app">
-        <h1>Trip Planner</h1>
+      <div className="login-page">
+        <div className="login-hero">
+          <div className="brand-icon-mark">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
+              strokeLinecap="round" strokeLinejoin="round" width="36" height="36">
+              <rect x="1" y="3" width="15" height="13" />
+              <path d="M16 8h4l3 3v5h-7V8z" />
+              <circle cx="5.5" cy="18.5" r="2.5" />
+              <circle cx="18.5" cy="18.5" r="2.5" />
+            </svg>
+          </div>
+          <h1 className="brand-title">Trip Planner</h1>
+          <p className="brand-tagline">Plan smarter. Drive compliant.</p>
+          <div className="brand-features">
+            <span className="brand-feature">Route Planning</span>
+            <span className="brand-feature">Rest &amp; Fuel Stops</span>
+            <span className="brand-feature">ELD Log Generation</span>
+            <span className="brand-feature">HOS Compliance</span>
+          </div>
+        </div>
         <AuthForm onAuthSuccess={handleAuthSuccess} />
       </div>
     )
