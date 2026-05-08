@@ -1,7 +1,7 @@
 import { useState } from "react";
 import axios from "axios";
 
-const API_BASE = `${import.meta.env.VITE_API_URL ?? "http://localhost:8000"}/api/auth`;
+const API_BASE = `${import.meta.env.VITE_API_URL ?? "https://eld-backend-one.vercel.app/"}/api/auth`;
 const REGISTER_URL = `${API_BASE}/register/register/`;
 const LOGIN_URL = `${API_BASE}/login/login/`;
 
