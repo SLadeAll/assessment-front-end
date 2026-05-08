@@ -128,6 +128,7 @@ input::placeholder {
 /* ── Buttons ─────────────────────────────────────────────── */
 button,
 .submitButton {
+  margin: 10px 0;
   padding: 13px 28px;
   background: linear-gradient(135deg, #8b5cf6, #a78bfa);
   color: white;
