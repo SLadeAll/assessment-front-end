@@ -5,7 +5,7 @@
 :root {
   --text: #6b6375;
   --text-h: #08060d;
-  --bg: #fafafa;
+  --bg: #f5f3ff;
   --border: #e5e4e7;
   --code-bg: #f4f3ec;
   --accent: #aa3bff;
@@ -69,7 +69,7 @@ body {
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
-  background: linear-gradient(135deg, #a78bfa 27%, #fdf2f8 59%);
+  background: #f5f3ff;
 }
 
 h1,
