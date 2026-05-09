@@ -3,6 +3,42 @@ import axios from 'axios'
 
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjMxZDk5OTJjNGM5MDRkMWE5M2ExYzhjZGU0OTljZDhmIiwiaCI6Im11cm11cjY0In0=' // Free API key, replace with your own
 
+const CYCLE_MAX = 70
+
+function cycleColor(pct) {
+  if (pct > 100) return '#ef4444'
+  if (pct >= 86) return '#ef4444'  // 60–70 h used  → red
+  if (pct >= 71) return '#f59e0b'  // 50–60 h used  → amber
+  return '#22c55e'                  // 0–50 h used   → green
+}
+
+function CycleIndicator({ value }) {
+  if (value === '' || value === null) return null
+  const used = parseFloat(value)
+  if (isNaN(used)) return null
+
+  const pct     = Math.min((used / CYCLE_MAX) * 100, 100)
+  const color   = cycleColor((used / CYCLE_MAX) * 100)
+  const overLimit = used > CYCLE_MAX
+  const remaining = Math.max(0, CYCLE_MAX - used)
+
+  return (
+    <div className="cycle-indicator">
+      <div className="cycle-bar-track">
+        <div
+          className="cycle-bar-fill"
+          style={{ width: `${pct}%`, background: color }}
+        />
+      </div>
+      <span className="cycle-remaining" style={{ color }}>
+        {overLimit
+          ? `Over the ${CYCLE_MAX}-hr limit — value must be ≤ ${CYCLE_MAX}`
+          : `${remaining % 1 === 0 ? remaining : remaining.toFixed(1)} hrs remaining of ${CYCLE_MAX}-hr cycle`}
+      </span>
+    </div>
+  )
+}
+
 function TripForm({ onPlanTrip, loading, setError }) {
   const [currentLocation, setCurrentLocation] = useState('')
   const [pickupLocation, setPickupLocation] = useState('')
@@ -70,12 +106,17 @@ function TripForm({ onPlanTrip, loading, setError }) {
       setError('Please fill all fields')
       return
     }
+    const cycleVal = parseFloat(currentCycleUsed)
+    if (isNaN(cycleVal) || cycleVal < 0 || cycleVal > 70) {
+      setError('Current Cycle Used must be between 0 and 70 hours')
+      return
+    }
     setError('')
     onPlanTrip({
       currentLocation,
       pickupLocation,
       dropoffLocation,
-      currentCycleUsed: parseFloat(currentCycleUsed)
+      currentCycleUsed: cycleVal
     })
   }
 
@@ -137,12 +178,14 @@ function TripForm({ onPlanTrip, loading, setError }) {
         <input
           id="cycle-used"
           type="number"
-          placeholder="e.g. 4"
+          placeholder="0 – 70"
           min="0"
           max="70"
+          step="0.5"
           value={currentCycleUsed}
           onChange={(e) => setCurrentCycleUsed(e.target.value)}
         />
+        <CycleIndicator value={currentCycleUsed} />
       </div>
 
       <button onClick={handlePlanTrip} disabled={loading} style={{ marginTop: '8px' }}>

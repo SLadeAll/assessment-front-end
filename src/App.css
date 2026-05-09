@@ -125,6 +125,33 @@ input::placeholder {
   font-weight: 400;
 }
 
+/* ── Cycle indicator ─────────────────────────────────────── */
+.cycle-indicator {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 2px;
+}
+
+.cycle-bar-track {
+  height: 6px;
+  background: #e5e7eb;
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.cycle-bar-fill {
+  height: 100%;
+  border-radius: 99px;
+  transition: width 0.25s ease, background 0.25s ease;
+}
+
+.cycle-remaining {
+  font-size: 12px;
+  font-weight: 600;
+  transition: color 0.25s ease;
+}
+
 /* ── Buttons ─────────────────────────────────────────────── */
 button,
 .submitButton {
