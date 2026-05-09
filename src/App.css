@@ -498,15 +498,17 @@ button:disabled {
     padding: 16px 12px 36px;
   }
 
-  /* ── Section cards ── */
+  /* ── Section cards — flat on mobile ── */
   .container {
-    padding: 20px 16px;
-    border-radius: 12px;
-    margin-bottom: 16px;
+    background: transparent;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 16px 0;
+    margin-bottom: 8px;
   }
   .container h2 {
     font-size: 16px;
-    margin-bottom: 16px;
+    margin-bottom: 14px;
   }
 
   /* ── Login hero ── */
