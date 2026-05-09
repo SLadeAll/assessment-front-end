@@ -191,6 +191,9 @@ button:disabled {
 
 /* ── Logout button (smaller, outlined) ───────────────────── */
 .logout-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 8px 20px;
   background: transparent;
   color: #8b5cf6;
@@ -210,9 +213,40 @@ button:disabled {
   box-shadow: none;
 }
 
-/* ── Login page layout ───────────────────────────────────── */
+/* ── Landing page (screen 1) ─────────────────────────────── */
+.landing-page {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+}
+
+.landing-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  max-width: 460px;
+  width: 100%;
+  gap: 0;
+}
+
+.get-started-btn {
+  margin-top: 36px;
+  padding: 16px 0;
+  width: 100%;
+  max-width: 320px;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  border-radius: 12px;
+}
+
+/* ── Login page (screen 2) ───────────────────────────────── */
 .login-page {
-  min-height: 100svh;
+  flex: 1;
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -223,6 +257,30 @@ button:disabled {
 .login-hero {
   text-align: center;
   margin-bottom: 28px;
+}
+
+.back-btn {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  background: white;
+  color: #6d28d9;
+  border: 1.5px solid #ddd6fe;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(109, 40, 217, 0.1);
+  cursor: pointer;
+  transition: background 0.2s, box-shadow 0.2s;
+  margin: 0;
+}
+
+.back-btn:hover {
+  background: #ede9fe;
+  box-shadow: 0 4px 12px rgba(109, 40, 217, 0.18);
+  transform: none;
+  opacity: 1;
 }
 
 .brand-icon-mark {
@@ -513,8 +571,7 @@ button:disabled {
 
   /* ── Login hero ── */
   .login-page {
-    padding: 32px 16px 40px;
-    justify-content: flex-start;
+    padding: 24px 16px 32px;
   }
   .login-hero {
     margin-bottom: 20px;

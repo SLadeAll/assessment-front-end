@@ -61,6 +61,7 @@ function App() {
     const saved = localStorage.getItem('authUser')
     return saved ? JSON.parse(saved) : null
   })
+  const [showAuth, setShowAuth] = useState(false)
 
   const isAuthenticated = Boolean(token)
 
@@ -76,6 +77,7 @@ function App() {
     setUser(null)
     localStorage.removeItem('authToken')
     localStorage.removeItem('authUser')
+    setShowAuth(false)
   }
 
   const geocodeLocation = async (location) => {
@@ -307,27 +309,40 @@ function App() {
   }
 
   if (!isAuthenticated) {
-    return (
-      <div className="login-page">
-        <div className="login-hero">
-          <div className="brand-icon-mark">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
-              strokeLinecap="round" strokeLinejoin="round" width="36" height="36">
-              <rect x="1" y="3" width="15" height="13" />
-              <path d="M16 8h4l3 3v5h-7V8z" />
-              <circle cx="5.5" cy="18.5" r="2.5" />
-              <circle cx="18.5" cy="18.5" r="2.5" />
-            </svg>
-          </div>
-          <h1 className="brand-title">Trip Planner</h1>
-          <p className="brand-tagline">Plan smarter. Drive compliant.</p>
-          <div className="brand-features">
-            <span className="brand-feature">Route Planning</span>
-            <span className="brand-feature">Rest &amp; Fuel Stops</span>
-            <span className="brand-feature">ELD Log Generation</span>
-            <span className="brand-feature">HOS Compliance</span>
+    if (!showAuth) {
+      return (
+        <div className="landing-page">
+          <div className="landing-hero">
+            <div className="brand-icon-mark">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
+                strokeLinecap="round" strokeLinejoin="round" width="36" height="36">
+                <rect x="1" y="3" width="15" height="13" />
+                <path d="M16 8h4l3 3v5h-7V8z" />
+                <circle cx="5.5" cy="18.5" r="2.5" />
+                <circle cx="18.5" cy="18.5" r="2.5" />
+              </svg>
+            </div>
+            <h1 className="brand-title">Trip Planner</h1>
+            <p className="brand-tagline">Plan smarter. Drive compliant.</p>
+            <div className="brand-features">
+              <span className="brand-feature">Route Planning</span>
+              <span className="brand-feature">Rest &amp; Fuel Stops</span>
+              <span className="brand-feature">ELD Log Generation</span>
+              <span className="brand-feature">HOS Compliance</span>
+            </div>
+            <button className="get-started-btn" onClick={() => setShowAuth(true)}>
+              Get Started →
+            </button>
           </div>
         </div>
+      )
+    }
+
+    return (
+      <div className="login-page">
+        <button className="back-btn" onClick={() => setShowAuth(false)}>
+          ← Back
+        </button>
         <AuthForm onAuthSuccess={handleAuthSuccess} />
       </div>
     )
@@ -345,6 +360,13 @@ function App() {
               </span>
             )}
             <button className="logout-button" onClick={handleLogout}>
+              <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" strokeWidth="2.2"
+                strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
               Logout
             </button>
           </div>
