@@ -135,7 +135,10 @@ function App() {
       
       const response = await axios.post(
         `https://api.openrouteservice.org/v2/directions/driving-car/geojson?api_key=${ORS_API_KEY}`,
-        { coordinates: formattedWaypoints },
+        {
+          coordinates: formattedWaypoints,
+          radiuses: formattedWaypoints.map(() => -1),
+        },
         { headers: { 'Content-Type': 'application/json' } }
       )
 

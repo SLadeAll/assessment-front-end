@@ -252,11 +252,81 @@ button:disabled {
 /* ── Auth card ───────────────────────────────────────────── */
 .auth-card {
   max-width: 420px;
+  width: 100%;
   margin: 0 auto;
   padding: 40px 36px;
   border-radius: 20px;
   background: white;
   box-shadow: 0 8px 40px rgba(109, 40, 217, 0.12);
+  box-sizing: border-box;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.inputDiv {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.inputText {
+  background: #f9f7ff;
+  padding: 13px 16px;
+  border: 1.5px solid #ddd6fe;
+  border-radius: 10px;
+  width: 100%;
+  box-sizing: border-box;
+  color: #111827;
+  font-size: 15px;
+  font-weight: 500;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  outline: none;
+}
+
+.inputText:focus {
+  border-color: #a78bfa;
+  box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.2);
+}
+
+.auth-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+  text-align: center;
+}
+
+.auth-toggle .inputLabel {
+  text-transform: none;
+  font-size: 14px;
+  color: #6b7280;
+  font-weight: 400;
+  margin-bottom: 0;
+}
+
+.auth-toggle button {
+  padding: 6px 16px;
+  font-size: 13px;
+  box-shadow: none;
+  margin: 0;
+}
+
+.success {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #15803d;
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: center;
 }
 
 .formTitle {
@@ -278,6 +348,11 @@ button:disabled {
 }
 
 /* ── ELD log table ───────────────────────────────────────── */
+.eld-log {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 .log-table {
   width: 100%;
   border-collapse: collapse;
@@ -355,4 +430,111 @@ button:disabled {
   font-size: 14px;
   font-weight: 500;
   text-align: left;
+}
+
+/* ══ Responsive ══════════════════════════════════════════════
+   Breakpoints:  768px → tablet   |   480px → phone
+   ══════════════════════════════════════════════════════════ */
+
+@media (max-width: 768px) {
+  .container {
+    padding: 24px 20px;
+  }
+
+  /* Keep the table readable on tablet with horizontal scroll */
+  .log-table {
+    min-width: 520px;
+  }
+}
+
+@media (max-width: 480px) {
+  /* ── Navbar ── */
+  .navbar-inner {
+    padding: 0 16px;
+    height: 56px;
+    gap: 8px;
+  }
+  .navbar-brand {
+    font-size: 17px;
+  }
+  .navbar-user {
+    display: none; /* username hidden; logout button still shows */
+  }
+  .logout-button {
+    padding: 6px 14px;
+    font-size: 12px;
+    margin: 0;
+  }
+
+  /* ── App shell ── */
+  .app {
+    padding: 16px 12px 36px;
+  }
+
+  /* ── Section cards ── */
+  .container {
+    padding: 20px 16px;
+    border-radius: 12px;
+    margin-bottom: 16px;
+  }
+  .container h2 {
+    font-size: 16px;
+    margin-bottom: 16px;
+  }
+
+  /* ── Login hero ── */
+  .login-page {
+    padding: 32px 16px 40px;
+    justify-content: flex-start;
+  }
+  .login-hero {
+    margin-bottom: 20px;
+  }
+  .brand-icon-mark {
+    width: 58px;
+    height: 58px;
+    border-radius: 15px;
+    margin-bottom: 14px;
+  }
+  .brand-icon-mark svg {
+    width: 28px;
+    height: 28px;
+  }
+  .brand-title {
+    font-size: 32px;
+    letter-spacing: -1px;
+  }
+  .brand-tagline {
+    font-size: 15px;
+    margin-bottom: 16px;
+  }
+  .brand-feature {
+    font-size: 11px;
+    padding: 4px 10px;
+  }
+
+  /* ── Auth card ── */
+  .auth-card {
+    padding: 28px 20px;
+    border-radius: 16px;
+  }
+  .formTitle {
+    font-size: 20px;
+    margin-bottom: 20px;
+  }
+
+  /* ── Buttons full-width on phone ── */
+  .submitButton,
+  .form button {
+    width: 100%;
+    margin: 0;
+  }
+
+  /* ── Map legend ── */
+  .map-legend {
+    gap: 8px 12px;
+  }
+  .legend-item {
+    font-size: 12px;
+  }
 }
