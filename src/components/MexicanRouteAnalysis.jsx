@@ -55,23 +55,47 @@ const SAMPLE_DATA = {
     { lat: 20.659, lon: -103.350, elevation: 1545 },
   ],
   references: [
-    // Casetas de cobro
-    { lat: 27.160, lon: -99.520,  type: 'caseta',  name: 'Caseta Colombia Solidaridad' },
-    { lat: 26.490, lon: -100.200, type: 'caseta',  name: 'Caseta Sabinas Hidalgo' },
-    { lat: 25.700, lon: -100.370, type: 'caseta',  name: 'Caseta Monterrey Norte' },
-    { lat: 25.490, lon: -100.870, type: 'caseta',  name: 'Caseta Saltillo Oriente' },
-    { lat: 23.650, lon: -100.630, type: 'caseta',  name: 'Caseta Matehuala' },
-    { lat: 22.210, lon: -100.970, type: 'caseta',  name: 'Caseta San Luis Potosí Sur' },
-    { lat: 20.720, lon: -100.405, type: 'caseta',  name: 'Caseta Querétaro Palmillas' },
-    { lat: 21.040, lon: -101.415, type: 'caseta',  name: 'Caseta El Gallo' },
-    { lat: 20.672, lon: -103.285, type: 'caseta',  name: 'Caseta Guadalajara Tonalá' },
-    // Paraderos
+    // ── Casetas de cobro ──────────────────────────────────────
+    { lat: 27.160, lon: -99.520,  type: 'caseta', name: 'Caseta Colombia Solidaridad' },
+    { lat: 26.490, lon: -100.200, type: 'caseta', name: 'Caseta Sabinas Hidalgo' },
+    { lat: 25.700, lon: -100.370, type: 'caseta', name: 'Caseta Monterrey Norte' },
+    { lat: 25.490, lon: -100.870, type: 'caseta', name: 'Caseta Saltillo Oriente' },
+    { lat: 23.650, lon: -100.630, type: 'caseta', name: 'Caseta Matehuala' },
+    { lat: 22.210, lon: -100.970, type: 'caseta', name: 'Caseta San Luis Potosí Sur' },
+    { lat: 20.720, lon: -100.405, type: 'caseta', name: 'Caseta Querétaro Palmillas' },
+    { lat: 21.040, lon: -101.415, type: 'caseta', name: 'Caseta El Gallo' },
+    { lat: 20.672, lon: -103.285, type: 'caseta', name: 'Caseta Guadalajara Tonalá' },
+    // ── Paraderos ─────────────────────────────────────────────
+    { lat: 27.090, lon: -99.528, type: 'paradero', name: 'Paradero Vallecillo' },
     { lat: 26.260, lon: -100.248, type: 'paradero', name: 'Paradero Mamulique' },
+    { lat: 25.920, lon: -100.271, type: 'paradero', name: 'Paradero Escobedo' },
+    { lat: 25.200, lon: -101.095, type: 'paradero', name: 'Paradero Arteaga' },
     { lat: 24.820, lon: -101.050, type: 'paradero', name: 'Paradero Carneros' },
+    { lat: 24.100, lon: -100.890, type: 'paradero', name: 'Paradero Cedral' },
+    { lat: 22.900, lon: -100.715, type: 'paradero', name: 'Paradero Villa de Reyes' },
+    { lat: 21.650, lon: -100.750, type: 'paradero', name: 'Paradero San Felipe' },
     { lat: 21.365, lon: -101.925, type: 'paradero', name: 'Paradero Lagos de Moreno' },
-    // Rampas de emergencia — sección Sierra Madre Oriental
-    { lat: 25.565, lon: -100.605, type: 'rampa', name: 'Rampa Cumbres de Monterrey Km 48' },
-    { lat: 25.515, lon: -100.755, type: 'rampa', name: 'Rampa Cumbres de Monterrey Km 63' },
+    { lat: 20.900, lon: -102.400, type: 'paradero', name: 'Paradero Tepatitlán Norte' },
+    // ── Gasolineras ───────────────────────────────────────────
+    { lat: 27.200, lon: -99.514, type: 'gasolinera', name: 'Pemex Nuevo Laredo Sur' },
+    { lat: 26.700, lon: -99.810, type: 'gasolinera', name: 'Pemex Anáhuac' },
+    { lat: 26.050, lon: -100.270, type: 'gasolinera', name: 'Pemex Ciénega de Flores' },
+    { lat: 25.540, lon: -100.330, type: 'gasolinera', name: 'Pemex Monterrey Tecnológico' },
+    { lat: 25.350, lon: -101.050, type: 'gasolinera', name: 'Pemex Saltillo Oriente' },
+    { lat: 24.600, lon: -100.985, type: 'gasolinera', name: 'Pemex General Cepeda' },
+    { lat: 23.400, lon: -100.680, type: 'gasolinera', name: 'Pemex Charcas' },
+    { lat: 22.400, lon: -100.930, type: 'gasolinera', name: 'Pemex Soledad de G.S.' },
+    { lat: 21.500, lon: -100.612, type: 'gasolinera', name: 'Pemex San Juan del Río' },
+    { lat: 20.980, lon: -101.380, type: 'gasolinera', name: 'Pemex San Diego de la Unión' },
+    { lat: 21.280, lon: -102.100, type: 'gasolinera', name: 'Pemex Encarnación de Díaz' },
+    { lat: 20.740, lon: -103.080, type: 'gasolinera', name: 'Pemex Tlaquepaque' },
+    // ── Rampas de emergencia ──────────────────────────────────
+    { lat: 26.200, lon: -100.252, type: 'rampa', name: 'Rampa Paso Mamulique Km 165' },
+    { lat: 25.565, lon: -100.605, type: 'rampa', name: 'Rampa Cumbres Monterrey Km 286' },
+    { lat: 25.515, lon: -100.755, type: 'rampa', name: 'Rampa Cumbres Monterrey Km 301' },
+    { lat: 25.475, lon: -100.840, type: 'rampa', name: 'Rampa Cumbres Monterrey Km 312' },
+    { lat: 21.180, lon: -102.280, type: 'rampa', name: 'Rampa Los Altos de Jalisco Km 1118' },
+    { lat: 20.850, lon: -102.700, type: 'rampa', name: 'Rampa Tepatitlán Km 1152' },
   ],
 }
 
@@ -100,10 +124,25 @@ function TrazoBadge({ trazo }) {
   )
 }
 
+function dmsComponent(decimal, posDir, negDir) {
+  const abs = Math.abs(decimal)
+  const d = Math.floor(abs)
+  const mFloat = (abs - d) * 60
+  let m = Math.floor(mFloat)
+  let s = Math.round((mFloat - m) * 60)
+  if (s === 60) { s = 0; m += 1 }
+  const dir = decimal >= 0 ? posDir : negDir
+  return `${d}°${String(m).padStart(2, '0')}'${String(s).padStart(2, '0')}"${dir}`
+}
+
+function toDMS(lat, lon) {
+  return `${dmsComponent(lat, 'N', 'S')}-${dmsComponent(lon, 'E', 'O')}`
+}
+
 function CoordCell({ pos }) {
   return (
     <span className="coord-cell">
-      {pos.lat.toFixed(5)}, {pos.lon.toFixed(5)}
+      {toDMS(pos.lat, pos.lon)}
     </span>
   )
 }
@@ -251,9 +290,6 @@ function MexicanRouteAnalysis({ token }) {
                   <th>Posición Final</th>
                   <th>Trazo / Topografía</th>
                   <th>Referencias</th>
-                  <th style={{ textAlign: 'right', width: '80px' }}>
-                    Dist. (km)
-                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -283,9 +319,6 @@ function MexicanRouteAnalysis({ token }) {
                           <li key={i}>{ref}</li>
                         ))}
                       </ul>
-                    </td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                      {tramo.distancia_km}
                     </td>
                   </tr>
                 ))}
