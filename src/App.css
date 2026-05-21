@@ -504,6 +504,181 @@ button:disabled {
   flex-shrink: 0;
 }
 
+/* ── Nav tabs (authenticated navbar) ────────────────────── */
+.nav-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.nav-tab {
+  padding: 7px 18px;
+  background: transparent;
+  color: #6b7280;
+  border: 1.5px solid transparent;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: none;
+  margin: 0;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+
+.nav-tab:hover {
+  color: #6d28d9;
+  background: #f5f3ff;
+  opacity: 1;
+  transform: none;
+  box-shadow: none;
+}
+
+.nav-tab--active {
+  color: #6d28d9;
+  background: #ede9fe;
+  border-color: #ddd6fe;
+}
+
+.nav-tab--active:hover {
+  background: #ede9fe;
+}
+
+/* ── Route analysis screen ───────────────────────────────── */
+.route-desc {
+  margin: 0 0 20px;
+  font-size: 14px;
+  color: #6b7280;
+  line-height: 1.6;
+}
+
+.route-input-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.sample-btn {
+  padding: 8px 18px;
+  background: white;
+  color: #6d28d9;
+  border: 1.5px solid #a78bfa;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: none;
+  margin: 0;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.sample-btn:hover {
+  background: #ede9fe;
+  color: #5b21b6;
+  opacity: 1;
+  transform: none;
+  box-shadow: none;
+}
+
+.route-input {
+  background: #f9f7ff;
+  padding: 13px 16px;
+  border: 1.5px solid #ddd6fe;
+  border-radius: 10px;
+  width: 100%;
+  box-sizing: border-box;
+  color: #111827;
+  font-size: 13px;
+  font-family: 'Menlo', 'Consolas', 'Monaco', monospace;
+  font-weight: 500;
+  resize: vertical;
+  line-height: 1.5;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  outline: none;
+}
+
+.route-input:focus {
+  border-color: #a78bfa;
+  box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.2);
+}
+
+.route-schema-hint {
+  margin-top: 10px;
+  font-size: 12px;
+  color: #9ca3af;
+  line-height: 1.5;
+}
+
+.route-schema-hint code {
+  font-size: 11px;
+  background: #f3f4f6;
+  padding: 2px 5px;
+  border-radius: 4px;
+  color: #374151;
+}
+
+/* ── Route summary stats ─────────────────────────────────── */
+.route-summary {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.summary-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 32px;
+}
+
+.summary-value {
+  font-size: 28px;
+  font-weight: 800;
+  color: #4c1d95;
+  line-height: 1.1;
+  letter-spacing: -0.5px;
+}
+
+.summary-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #9ca3af;
+  margin-top: 3px;
+}
+
+.summary-divider {
+  width: 1px;
+  height: 48px;
+  background: #ede9fe;
+}
+
+/* ── Tramo table extras ──────────────────────────────────── */
+.tramo-table {
+  min-width: 700px;
+}
+
+.coord-cell {
+  font-family: 'Menlo', 'Consolas', 'Monaco', monospace;
+  font-size: 12px;
+  color: #374151;
+  white-space: nowrap;
+}
+
+.referencias-list {
+  margin: 0;
+  padding: 0 0 0 16px;
+  list-style: disc;
+  font-size: 13px;
+  color: #4b5563;
+  line-height: 1.7;
+}
+
+.referencias-list li {
+  padding: 0;
+}
+
 /* ── Error banner ────────────────────────────────────────── */
 .error {
   background: #fef2f2;
@@ -526,9 +701,17 @@ button:disabled {
     padding: 24px 20px;
   }
 
-  /* Keep the table readable on tablet with horizontal scroll */
+  /* Keep the tables readable on tablet with horizontal scroll */
   .log-table {
     min-width: 520px;
+  }
+
+  .tramo-table {
+    min-width: 680px;
+  }
+
+  .summary-stat {
+    padding: 8px 20px;
   }
 }
 
@@ -536,8 +719,12 @@ button:disabled {
   /* ── Navbar ── */
   .navbar-inner {
     padding: 0 16px;
-    height: 56px;
-    gap: 8px;
+    height: auto;
+    min-height: 56px;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding-top: 8px;
+    padding-bottom: 8px;
   }
   .navbar-brand {
     font-size: 17px;
@@ -549,6 +736,18 @@ button:disabled {
     padding: 6px 14px;
     font-size: 12px;
     margin: 0;
+  }
+
+  /* ── Nav tabs ── */
+  .nav-tabs {
+    order: 3;
+    width: 100%;
+    justify-content: center;
+    padding-bottom: 4px;
+  }
+  .nav-tab {
+    font-size: 12px;
+    padding: 6px 14px;
   }
 
   /* ── App shell ── */
