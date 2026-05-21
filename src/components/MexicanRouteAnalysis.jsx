@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import axios from 'axios'
+import RouteAnalysisMap from './RouteAnalysisMap'
 
 const API_BASE = `${import.meta.env.VITE_API_URL ?? 'https://eld-backend-one.vercel.app'}/api`
 
@@ -155,6 +156,7 @@ function MexicanRouteAnalysis({ token }) {
   )
   const [tramos, setTramos] = useState(null)
   const [summary, setSummary] = useState(null)
+  const [parsedInput, setParsedInput] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -163,6 +165,7 @@ function MexicanRouteAnalysis({ token }) {
     setError('')
     setTramos(null)
     setSummary(null)
+    setParsedInput(null)
 
     let parsed
     try {
@@ -187,6 +190,10 @@ function MexicanRouteAnalysis({ token }) {
         total_tramos: response.data.total_tramos,
         distancia_total_km: response.data.distancia_total_km,
       })
+      setParsedInput({
+        coordinates: parsed.coordinates || [],
+        references: parsed.references || [],
+      })
     } catch (err) {
       const errData = err.response?.data
       if (errData && typeof errData === 'object') {
@@ -206,6 +213,7 @@ function MexicanRouteAnalysis({ token }) {
     setInputJson(JSON.stringify(SAMPLE_DATA, null, 2))
     setTramos(null)
     setSummary(null)
+    setParsedInput(null)
     setError('')
   }
 
@@ -274,6 +282,18 @@ function MexicanRouteAnalysis({ token }) {
               <span className="summary-label">Distancia Total</span>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── Mapa de ruta ───────────────────────────────────── */}
+      {tramos && parsedInput && (
+        <div className="container">
+          <h2>Mapa de Ruta</h2>
+          <RouteAnalysisMap
+            tramos={tramos}
+            coordinates={parsedInput.coordinates}
+            references={parsedInput.references}
+          />
         </div>
       )}
 
