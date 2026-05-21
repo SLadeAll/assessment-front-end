@@ -5,6 +5,7 @@ import AuthForm from './components/AuthForm'
 import TripForm from './components/TripForm'
 import TripMap from './components/TripMap'
 import ELDLog from './components/ELDLog'
+import MexicanRouteAnalysis from './components/MexicanRouteAnalysis'
 
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjMxZDk5OTJjNGM5MDRkMWE5M2ExYzhjZGU0OTljZDhmIiwiaCI6Im11cm11cjY0In0='
 
@@ -62,6 +63,7 @@ function App() {
     return saved ? JSON.parse(saved) : null
   })
   const [showAuth, setShowAuth] = useState(false)
+  const [activeView, setActiveView] = useState('trip-planner')
 
   const isAuthenticated = Boolean(token)
 
@@ -353,6 +355,20 @@ function App() {
       <nav className="navbar">
         <div className="navbar-inner">
           <h1 className="navbar-brand">Trip Planner</h1>
+          <div className="nav-tabs">
+            <button
+              className={`nav-tab${activeView === 'trip-planner' ? ' nav-tab--active' : ''}`}
+              onClick={() => setActiveView('trip-planner')}
+            >
+              Trip Planner
+            </button>
+            <button
+              className={`nav-tab${activeView === 'route-analysis' ? ' nav-tab--active' : ''}`}
+              onClick={() => setActiveView('route-analysis')}
+            >
+              Análisis de Ruta
+            </button>
+          </div>
           <div className="navbar-right">
             {user && (
               <span className="navbar-user">
@@ -373,28 +389,32 @@ function App() {
         </div>
       </nav>
 
-      <div className="app">
-        <div className="container">
-          <h2>Plan a Trip</h2>
-          <TripForm onPlanTrip={planTrip} loading={loading} setError={setError} />
+      {activeView === 'route-analysis' ? (
+        <MexicanRouteAnalysis token={token} />
+      ) : (
+        <div className="app">
+          <div className="container">
+            <h2>Plan a Trip</h2>
+            <TripForm onPlanTrip={planTrip} loading={loading} setError={setError} />
+          </div>
+
+          {error && <div className="error">{error}</div>}
+
+          {route && (
+            <div className="container">
+              <h2>Route Map</h2>
+              <TripMap route={route} />
+            </div>
+          )}
+
+          {logs.length > 0 && (
+            <div className="container">
+              <h2>ELD Logs</h2>
+              <ELDLog logs={logs} />
+            </div>
+          )}
         </div>
-
-        {error && <div className="error">{error}</div>}
-
-        {route && (
-          <div className="container">
-            <h2>Route Map</h2>
-            <TripMap route={route} />
-          </div>
-        )}
-
-        {logs.length > 0 && (
-          <div className="container">
-            <h2>ELD Logs</h2>
-            <ELDLog logs={logs} />
-          </div>
-        )}
-      </div>
+      )}
     </>
   )
 }
