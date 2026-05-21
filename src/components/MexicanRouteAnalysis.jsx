@@ -3,66 +3,75 @@ import axios from 'axios'
 
 const API_BASE = `${import.meta.env.VITE_API_URL ?? 'https://eld-backend-one.vercel.app'}/api`
 
-// Sample route: Mexico City (Periférico Sur) → Cuernavaca via Federal 95D
-// Approximates the Tres Cumbres mountain section with realistic elevation changes
+// Sample route: Nuevo Laredo → Monterrey → Saltillo → Matehuala →
+//               San Luis Potosí → Querétaro → Lagos de Moreno → Guadalajara
+// Covers ~1 280 km of Federal Highways 85 / 40 / 57 / 80 with varied terrain:
+// northern plains, Sierra Madre Oriental ascent, high plateau, and Los Altos de Jalisco.
 const SAMPLE_DATA = {
   coordinates: [
-    { lat: 19.2000, lon: -99.1300, elevation: 2210 },
-    { lat: 19.1850, lon: -99.1330, elevation: 2220 },
-    { lat: 19.1700, lon: -99.1360, elevation: 2230 },
-    { lat: 19.1550, lon: -99.1390, elevation: 2245 },
-    { lat: 19.1400, lon: -99.1420, elevation: 2260 },
-    // Caseta Tlalpan area — start ascending into the mountains
-    { lat: 19.1250, lon: -99.1500, elevation: 2360 },
-    { lat: 19.1150, lon: -99.1620, elevation: 2490 },
-    { lat: 19.1080, lon: -99.1760, elevation: 2640 },
-    { lat: 19.1030, lon: -99.1900, elevation: 2780 },
-    { lat: 19.1000, lon: -99.2050, elevation: 2900 },
-    { lat: 19.0990, lon: -99.2200, elevation: 2990 },
-    // Mountain pass — Tres Cumbres area (relatively straight)
-    { lat: 19.0980, lon: -99.2350, elevation: 3055 },
-    { lat: 19.0970, lon: -99.2500, elevation: 3080 },
-    { lat: 19.0960, lon: -99.2650, elevation: 3090 },
-    { lat: 19.0950, lon: -99.2780, elevation: 3085 },
-    // Start descending toward Cuernavaca — curving sections
-    { lat: 19.0880, lon: -99.2900, elevation: 2960 },
-    { lat: 19.0780, lon: -99.2980, elevation: 2790 },
-    { lat: 19.0650, lon: -99.3030, elevation: 2590 },
-    { lat: 19.0500, lon: -99.3050, elevation: 2370 },
-    { lat: 19.0350, lon: -99.3040, elevation: 2160 },
-    { lat: 19.0200, lon: -99.3000, elevation: 1990 },
-    // Approach to Cuernavaca — flatter section
-    { lat: 19.0100, lon: -99.2900, elevation: 1910 },
-    { lat: 19.0050, lon: -99.2800, elevation: 1878 },
-    { lat: 19.0000, lon: -99.2700, elevation: 1858 },
-    { lat: 18.9950, lon: -99.2600, elevation: 1845 },
-    { lat: 18.9900, lon: -99.2500, elevation: 1838 },
+    // ── Nuevo Laredo — planicie norteña ──────────────────────
+    { lat: 27.476, lon: -99.515, elevation: 218 },
+    { lat: 27.280, lon: -99.516, elevation: 226 },
+    { lat: 27.100, lon: -99.530, elevation: 240 },
+    { lat: 26.870, lon: -99.685, elevation: 292 },
+    // ── Corredor Nuevo León — Paso Mamulique ─────────────────
+    { lat: 26.500, lon: -100.192, elevation: 352 },
+    { lat: 26.300, lon: -100.245, elevation: 515 },
+    { lat: 26.150, lon: -100.260, elevation: 725 },
+    { lat: 25.960, lon: -100.270, elevation: 598 },
+    // ── Monterrey ────────────────────────────────────────────
+    { lat: 25.686, lon: -100.316, elevation: 537 },
+    // ── Sierra Madre Oriental — ascenso Mty–Saltillo ─────────
+    { lat: 25.620, lon: -100.430, elevation: 700 },
+    { lat: 25.570, lon: -100.520, elevation: 955 },
+    { lat: 25.560, lon: -100.640, elevation: 1205 },
+    { lat: 25.530, lon: -100.740, elevation: 1385 },
+    { lat: 25.500, lon: -100.870, elevation: 1525 },
+    // ── Saltillo ─────────────────────────────────────────────
+    { lat: 25.428, lon: -101.003, elevation: 1592 },
+    // ── Altiplano — Saltillo → Matehuala ─────────────────────
+    { lat: 25.000, lon: -101.100, elevation: 1652 },
+    { lat: 24.500, lon: -100.980, elevation: 1822 },
+    { lat: 23.660, lon: -100.638, elevation: 1685 },
+    // ── San Luis Potosí ──────────────────────────────────────
+    { lat: 23.000, lon: -100.720, elevation: 1812 },
+    { lat: 22.600, lon: -100.900, elevation: 1860 },
+    { lat: 22.149, lon: -100.979, elevation: 1877 },
+    // ── Bajío — descenso gradual hacia Querétaro ─────────────
+    { lat: 21.700, lon: -100.755, elevation: 1853 },
+    { lat: 21.200, lon: -100.558, elevation: 1839 },
+    // ── Querétaro ────────────────────────────────────────────
+    { lat: 20.593, lon: -100.389, elevation: 1820 },
+    // ── Querétaro → Lagos de Moreno ──────────────────────────
+    { lat: 20.750, lon: -100.900, elevation: 1786 },
+    { lat: 21.000, lon: -101.400, elevation: 1737 },
+    { lat: 21.358, lon: -101.933, elevation: 1562 },
+    // ── Los Altos de Jalisco → Guadalajara ───────────────────
+    { lat: 21.100, lon: -102.300, elevation: 1692 },
+    { lat: 20.818, lon: -102.745, elevation: 1757 },
+    { lat: 20.720, lon: -103.000, elevation: 1628 },
+    { lat: 20.680, lon: -103.200, elevation: 1587 },
+    // ── Guadalajara ──────────────────────────────────────────
+    { lat: 20.659, lon: -103.350, elevation: 1545 },
   ],
   references: [
-    {
-      lat: 19.1220,
-      lon: -99.1450,
-      type: 'caseta',
-      name: 'Caseta Tlalpan',
-    },
-    {
-      lat: 19.1100,
-      lon: -99.1580,
-      type: 'paradero',
-      name: 'Paradero La Pera',
-    },
-    {
-      lat: 19.0380,
-      lon: -99.3042,
-      type: 'rampa',
-      name: 'Rampa Tres Cumbres',
-    },
-    {
-      lat: 19.0060,
-      lon: -99.2820,
-      type: 'caseta',
-      name: 'Caseta Cuernavaca Norte',
-    },
+    // Casetas de cobro
+    { lat: 27.160, lon: -99.520,  type: 'caseta',  name: 'Caseta Colombia Solidaridad' },
+    { lat: 26.490, lon: -100.200, type: 'caseta',  name: 'Caseta Sabinas Hidalgo' },
+    { lat: 25.700, lon: -100.370, type: 'caseta',  name: 'Caseta Monterrey Norte' },
+    { lat: 25.490, lon: -100.870, type: 'caseta',  name: 'Caseta Saltillo Oriente' },
+    { lat: 23.650, lon: -100.630, type: 'caseta',  name: 'Caseta Matehuala' },
+    { lat: 22.210, lon: -100.970, type: 'caseta',  name: 'Caseta San Luis Potosí Sur' },
+    { lat: 20.720, lon: -100.405, type: 'caseta',  name: 'Caseta Querétaro Palmillas' },
+    { lat: 21.040, lon: -101.415, type: 'caseta',  name: 'Caseta El Gallo' },
+    { lat: 20.672, lon: -103.285, type: 'caseta',  name: 'Caseta Guadalajara Tonalá' },
+    // Paraderos
+    { lat: 26.260, lon: -100.248, type: 'paradero', name: 'Paradero Mamulique' },
+    { lat: 24.820, lon: -101.050, type: 'paradero', name: 'Paradero Carneros' },
+    { lat: 21.365, lon: -101.925, type: 'paradero', name: 'Paradero Lagos de Moreno' },
+    // Rampas de emergencia — sección Sierra Madre Oriental
+    { lat: 25.565, lon: -100.605, type: 'rampa', name: 'Rampa Cumbres de Monterrey Km 48' },
+    { lat: 25.515, lon: -100.755, type: 'rampa', name: 'Rampa Cumbres de Monterrey Km 63' },
   ],
 }
 
@@ -176,7 +185,7 @@ function MexicanRouteAnalysis({ token }) {
             className="sample-btn"
             onClick={handleLoadSample}
           >
-            Cargar ejemplo (México–Cuernavaca)
+            Cargar ejemplo (Nuevo Laredo – Qro. – Gdl.)
           </button>
         </div>
 
