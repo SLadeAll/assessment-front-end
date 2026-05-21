@@ -100,9 +100,11 @@ const SAMPLE_DATA = {
 }
 
 const TRAZO_STYLE = {
-  Recta: { bg: '#eff6ff', color: '#1d4ed8' },
-  'Curva Ascendente': { bg: '#f0fdf4', color: '#15803d' },
-  'Curva Descendente': { bg: '#fef9c3', color: '#854d0e' },
+  'Recta':              { bg: '#eff6ff', color: '#1d4ed8' },
+  'Recta Ascendente':   { bg: '#f0fdf4', color: '#15803d' },
+  'Recta Descendente':  { bg: '#fffbeb', color: '#b45309' },
+  'Curva Ascendente':   { bg: '#dcfce7', color: '#166534' },
+  'Curva Descendente':  { bg: '#fff7ed', color: '#c2410c' },
 }
 
 function TrazoBadge({ trazo }) {
