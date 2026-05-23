@@ -160,6 +160,7 @@ function MexicanRouteAnalysis({ token }) {
   const [parsedInput, setParsedInput] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [pdfLoading, setPdfLoading] = useState(false)
   // Vehicle config: percentage of the route where the first delivery happens
   const [deliveryPct, setDeliveryPct] = useState(50)
 
@@ -220,6 +221,60 @@ function MexicanRouteAnalysis({ token }) {
       }
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleExportPdf = async () => {
+    setPdfLoading(true)
+    setError('')
+
+    let parsed
+    try {
+      parsed = JSON.parse(inputJson)
+    } catch {
+      setError('JSON inválido. Corrígelo antes de exportar.')
+      setPdfLoading(false)
+      return
+    }
+
+    try {
+      const headers = { 'Content-Type': 'application/json' }
+      if (token) headers['Authorization'] = `Token ${token}`
+
+      const coordCount = (parsed.coordinates || []).length
+      const firstDeliveryIdx = Math.max(1, Math.round(coordCount * deliveryPct / 100))
+
+      const payload = {
+        ...parsed,
+        vehicle_config: {
+          vehicle_type: 'double_trailer',
+          first_delivery_coord_index: firstDeliveryIdx,
+        },
+        route_label: `Ruta ${coordCount} puntos — entrega al ${deliveryPct}%`,
+      }
+
+      const response = await axios.post(
+        `${API_BASE}/route-analysis/export-pdf/`,
+        payload,
+        { headers, responseType: 'blob' }
+      )
+
+      const disposition = response.headers['content-disposition'] || ''
+      const match = disposition.match(/filename="?([^"]+)"?/)
+      const filename = match ? match[1] : `analisis_riesgos_${Date.now()}.pdf`
+
+      const url = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
+      const a   = document.createElement('a')
+      a.href     = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      setError(err.message || 'Error al generar el PDF.')
+    } finally {
+      setPdfLoading(false)
     }
   }
 
@@ -317,10 +372,43 @@ function MexicanRouteAnalysis({ token }) {
           </p>
         </div>
 
-        <div style={{ marginTop: '16px' }}>
-          <button type="button" onClick={handleAnalyze} disabled={loading}>
+        <div style={{ marginTop: '16px', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <button type="button" onClick={handleAnalyze} disabled={loading || pdfLoading}>
             {loading ? 'Analizando…' : 'Analizar Ruta'}
           </button>
+          <button
+            type="button"
+            onClick={handleExportPdf}
+            disabled={loading || pdfLoading}
+            style={{
+              background: pdfLoading ? '#9ca3af' : '#dc2626',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '6px',
+              padding: '8px 18px',
+              fontWeight: 600,
+              fontSize: '14px',
+              cursor: pdfLoading ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '7px',
+            }}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24"
+              fill="none" stroke="currentColor" strokeWidth="2.2"
+              strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="12" y1="18" x2="12" y2="12"/>
+              <line x1="9" y1="15" x2="15" y2="15"/>
+            </svg>
+            {pdfLoading ? 'Generando PDF…' : 'Exportar PDF'}
+          </button>
+          {pdfLoading && (
+            <span style={{ fontSize: '12px', color: '#6b7280' }}>
+              Generando mapas y tabla PROCESO — esto puede tardar unos segundos…
+            </span>
+          )}
         </div>
       </div>
 
