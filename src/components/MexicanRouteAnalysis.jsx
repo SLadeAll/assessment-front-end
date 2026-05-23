@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import axios from 'axios'
 import RouteAnalysisMap from './RouteAnalysisMap'
+import RiskAnalysisPanel from './RiskAnalysisPanel'
 
 const API_BASE = `${import.meta.env.VITE_API_URL ?? 'https://eld-backend-one.vercel.app'}/api`
 
@@ -159,6 +160,8 @@ function MexicanRouteAnalysis({ token }) {
   const [parsedInput, setParsedInput] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  // Vehicle config: percentage of the route where the first delivery happens
+  const [deliveryPct, setDeliveryPct] = useState(50)
 
   const handleAnalyze = async () => {
     setLoading(true)
@@ -180,9 +183,20 @@ function MexicanRouteAnalysis({ token }) {
       const headers = { 'Content-Type': 'application/json' }
       if (token) headers['Authorization'] = `Token ${token}`
 
+      const coordCount = (parsed.coordinates || []).length
+      const firstDeliveryIdx = Math.max(1, Math.round(coordCount * deliveryPct / 100))
+
+      const payload = {
+        ...parsed,
+        vehicle_config: {
+          vehicle_type: 'double_trailer',
+          first_delivery_coord_index: firstDeliveryIdx,
+        },
+      }
+
       const response = await axios.post(
         `${API_BASE}/route-analysis/analyze/`,
-        parsed,
+        payload,
         { headers }
       )
       setTramos(response.data.tramos)
@@ -256,6 +270,53 @@ function MexicanRouteAnalysis({ token }) {
           </code>
         </div>
 
+        {/* ── Vehicle config ─────────────────────────────────── */}
+        <div style={{
+          marginTop: '20px',
+          padding: '16px',
+          background: '#f8f7ff',
+          border: '1px solid #e9d5ff',
+          borderRadius: '8px',
+        }}>
+          <p style={{ margin: '0 0 12px', fontWeight: 700, fontSize: '13px', color: '#6d28d9' }}>
+            Configuración del Vehículo — Camión de Doble Remolque
+          </p>
+          <p style={{ margin: '0 0 10px', fontSize: '12px', color: '#4b5563' }}>
+            Sale con <strong>carga completa</strong>. Entrega la mitad en el{' '}
+            <strong>primer destino</strong> y continúa con <strong>media carga</strong>.
+          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+            <label style={{ fontSize: '12px', fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>
+              Primera entrega al:
+            </label>
+            <input
+              type="range"
+              min={10}
+              max={90}
+              step={5}
+              value={deliveryPct}
+              onChange={e => setDeliveryPct(Number(e.target.value))}
+              style={{ flex: 1, minWidth: '140px', accentColor: '#7c3aed' }}
+            />
+            <span style={{
+              minWidth: '48px',
+              fontSize: '13px',
+              fontWeight: 700,
+              color: '#7c3aed',
+              textAlign: 'center',
+            }}>
+              {deliveryPct}%
+            </span>
+            <span style={{ fontSize: '11px', color: '#6b7280' }}>
+              de la ruta
+            </span>
+          </div>
+          <p style={{ margin: '10px 0 0', fontSize: '11px', color: '#9ca3af' }}>
+            Los tramos antes del {deliveryPct}% se analizarán con <strong>Carga Completa</strong>;
+            los tramos restantes con <strong>Media Carga</strong>.
+          </p>
+        </div>
+
         <div style={{ marginTop: '16px' }}>
           <button type="button" onClick={handleAnalyze} disabled={loading}>
             {loading ? 'Analizando…' : 'Analizar Ruta'}
@@ -316,33 +377,51 @@ function MexicanRouteAnalysis({ token }) {
               </thead>
               <tbody>
                 {tramos.map((tramo) => (
-                  <tr key={tramo.numero}>
-                    <td
-                      style={{
-                        fontWeight: 700,
-                        textAlign: 'center',
-                        color: '#6d28d9',
-                      }}
-                    >
-                      {tramo.numero}
-                    </td>
-                    <td>
-                      <CoordCell pos={tramo.posicion_inicial} />
-                    </td>
-                    <td>
-                      <CoordCell pos={tramo.posicion_final} />
-                    </td>
-                    <td>
-                      <TrazoBadge trazo={tramo.trazo_topografia} />
-                    </td>
-                    <td>
-                      <ul className="referencias-list">
-                        {tramo.referencias.map((ref, i) => (
-                          <li key={i}>{ref}</li>
-                        ))}
-                      </ul>
-                    </td>
-                  </tr>
+                  <>
+                    <tr key={tramo.numero}>
+                      <td
+                        style={{
+                          fontWeight: 700,
+                          textAlign: 'center',
+                          color: '#6d28d9',
+                          verticalAlign: 'top',
+                        }}
+                      >
+                        {tramo.numero}
+                      </td>
+                      <td style={{ verticalAlign: 'top' }}>
+                        <CoordCell pos={tramo.posicion_inicial} />
+                      </td>
+                      <td style={{ verticalAlign: 'top' }}>
+                        <CoordCell pos={tramo.posicion_final} />
+                      </td>
+                      <td style={{ verticalAlign: 'top' }}>
+                        <TrazoBadge trazo={tramo.trazo_topografia} />
+                        {tramo.risk_analysis && (
+                          <div style={{ marginTop: '4px', fontSize: '11px', color: '#9ca3af' }}>
+                            {tramo.distancia_km} km
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ verticalAlign: 'top' }}>
+                        <ul className="referencias-list">
+                          {tramo.referencias.map((ref, i) => (
+                            <li key={i}>{ref}</li>
+                          ))}
+                        </ul>
+                      </td>
+                    </tr>
+                    {tramo.risk_analysis && (
+                      <tr key={`risk-${tramo.numero}`}>
+                        <td
+                          colSpan={5}
+                          style={{ padding: '0 12px 16px', background: '#fafafa' }}
+                        >
+                          <RiskAnalysisPanel riskAnalysis={tramo.risk_analysis} />
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 ))}
               </tbody>
             </table>
