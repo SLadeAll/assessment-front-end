@@ -2,6 +2,7 @@ import { useState } from 'react'
 import axios from 'axios'
 import RouteAnalysisMap from './RouteAnalysisMap'
 import RiskAnalysisPanel from './RiskAnalysisPanel'
+import { fetchIndications, DEFAULT_VISIBLE_LAYERS } from '../services/indicationService'
 
 const API_BASE = `${import.meta.env.VITE_API_URL ?? 'https://eld-backend-one.vercel.app'}/api`
 const ORS_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjMxZDk5OTJjNGM5MDRkMWE5M2ExYzhjZGU0OTljZDhmIiwiaCI6Im11cm11cjY0In0='
@@ -47,7 +48,6 @@ const MEXICAN_REFERENCES = [
   { lat: 20.850, lon: -102.700, type: 'rampa',      name: 'Rampa Tepatitlán Km 1152' },
 ]
 
-// Sample JSON for the advanced mode
 const SAMPLE_JSON = {
   coordinates: [
     { lat: 27.476, lon: -99.515, elevation: 218 },
@@ -122,7 +122,6 @@ function CoordCell({ pos }) {
   return <span className="coord-cell">{toDMS(pos.lat, pos.lon)}</span>
 }
 
-// Returns reference points within maxKm of any coordinate in the route
 function filterNearbyRefs(routeCoords, maxKm = 20) {
   return MEXICAN_REFERENCES.filter(ref =>
     routeCoords.some(c => {
@@ -133,7 +132,6 @@ function filterNearbyRefs(routeCoords, maxKm = 20) {
   )
 }
 
-// Downsample dense ORS route coordinates to ~targetKm spacing
 function downsample(coords, targetKm = 35) {
   if (coords.length < 2) return coords
   const result = [coords[0]]
@@ -151,7 +149,7 @@ function downsample(coords, targetKm = 35) {
   return result
 }
 
-// ── Autocomplete input component ────────────────────────────────────────────
+// ── Autocomplete input ────────────────────────────────────────────────────────
 function CityInput({ id, label, placeholder, value, onChange, suggestions, onSelect, onClearSuggestions }) {
   return (
     <div className="form-field" style={{ position: 'relative' }}>
@@ -168,26 +166,17 @@ function CityInput({ id, label, placeholder, value, onChange, suggestions, onSel
       />
       {suggestions.length > 0 && (
         <div style={{
-          position: 'absolute',
-          top: '100%',
-          left: 0,
-          right: 0,
-          background: '#fff',
-          border: '1px solid #d1d5db',
-          borderRadius: '6px',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
-          zIndex: 100,
-          maxHeight: '180px',
-          overflowY: 'auto',
+          position: 'absolute', top: '100%', left: 0, right: 0,
+          background: '#fff', border: '1px solid #d1d5db', borderRadius: '6px',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.12)', zIndex: 100,
+          maxHeight: '180px', overflowY: 'auto',
         }}>
           {suggestions.map((s, i) => (
             <div
               key={i}
               onMouseDown={() => onSelect(s)}
               style={{
-                padding: '8px 12px',
-                cursor: 'pointer',
-                fontSize: '13px',
+                padding: '8px 12px', cursor: 'pointer', fontSize: '13px',
                 borderBottom: i < suggestions.length - 1 ? '1px solid #f3f4f6' : 'none',
               }}
               onMouseEnter={e => e.currentTarget.style.background = '#f5f3ff'}
@@ -202,21 +191,23 @@ function CityInput({ id, label, placeholder, value, onChange, suggestions, onSel
   )
 }
 
-// ── Main component ───────────────────────────────────────────────────────────
+// ── Main component ────────────────────────────────────────────────────────────
 function MexicanRouteAnalysis({ token }) {
   // Dynamic form state
   const [origin, setOrigin] = useState('')
   const [destination, setDestination] = useState('')
-  const [stops, setStops] = useState([])          // strings
+  const [stops, setStops] = useState([])
   const [originSuggs, setOriginSuggs] = useState([])
   const [destSuggs, setDestSuggs] = useState([])
-  const [stopSuggs, setStopSuggs] = useState([])  // array of arrays
+  const [stopSuggs, setStopSuggs] = useState([])
   const [routeLoading, setRouteLoading] = useState(false)
   const [routeReady, setRouteReady] = useState(false)
   const [routePreview, setRoutePreview] = useState(null)
 
-  // Shared analysis state
+  // Route data shared between map and analysis
   const [routeData, setRouteData] = useState(null)
+
+  // Route analysis state
   const [tramos, setTramos] = useState(null)
   const [summary, setSummary] = useState(null)
   const [parsedInput, setParsedInput] = useState(null)
@@ -225,11 +216,26 @@ function MexicanRouteAnalysis({ token }) {
   const [pdfLoading, setPdfLoading] = useState(false)
   const [deliveryPct, setDeliveryPct] = useState(50)
 
+  // Auto-extracted indication layers
+  const [indications, setIndications] = useState([])
+  const [indicationsLoading, setIndicationsLoading] = useState(false)
+  const [visibleLayers, setVisibleLayers] = useState(DEFAULT_VISIBLE_LAYERS)
+
   // Advanced JSON mode
   const [showJson, setShowJson] = useState(false)
   const [inputJson, setInputJson] = useState('')
 
-  // ── Autocomplete helpers ─────────────────────────────────────────────────
+  // ── Layer toggle ───────────────────────────────────────────────────────────
+  const handleToggleLayer = (type) => {
+    setVisibleLayers(prev => {
+      const next = new Set(prev)
+      if (next.has(type)) next.delete(type)
+      else next.add(type)
+      return next
+    })
+  }
+
+  // ── Autocomplete helpers ───────────────────────────────────────────────────
   const fetchSuggestions = async (text) => {
     if (!text || text.length < 3) return []
     try {
@@ -245,64 +251,12 @@ function MexicanRouteAnalysis({ token }) {
       params: { api_key: ORS_KEY, text, size: 1 },
     })
     if (!r.data.features?.length) throw new Error(`Ubicación no encontrada: "${text}"`)
-    return r.data.features[0].geometry.coordinates // [lon, lat]
+    return r.data.features[0].geometry.coordinates
   }
 
-  // ── Get route from ORS ───────────────────────────────────────────────────
-  const handleGetRoute = async () => {
-    if (!origin.trim() || !destination.trim()) {
-      setError('Escribe al menos el origen y el destino.')
-      return
-    }
-    setRouteLoading(true)
-    setError('')
-    setRouteReady(false)
-    setRoutePreview(null)
-    setTramos(null)
-    setSummary(null)
-    setParsedInput(null)
-
-    try {
-      const allCities = [origin.trim(), ...stops.filter(s => s.trim()), destination.trim()]
-      const geocoded = await Promise.all(allCities.map(geocodeText)) // [[lon, lat], ...]
-
-      const routeRes = await axios.post(
-        `https://api.openrouteservice.org/v2/directions/driving-car/geojson?api_key=${ORS_KEY}`,
-        { coordinates: geocoded, elevation: true, instructions: false },
-        { headers: { 'Content-Type': 'application/json' } }
-      )
-      const feature = routeRes.data.features[0]
-      const rawCoords = feature.geometry.coordinates  // [lon, lat, elev]
-      const distanceKm = Math.round(feature.properties.summary.distance / 1000)
-
-      const allPoints = rawCoords.map(([lon, lat, elevation]) => ({
-        lat, lon, elevation: Math.round(elevation || 0),
-      }))
-      const sampled = downsample(allPoints, 35)
-      const refs = filterNearbyRefs(sampled)
-
-      const label = allCities.join(' → ')
-      setRouteData({ coordinates: sampled, references: refs })
-      setRoutePreview({ label, km: distanceKm, points: sampled.length, refs: refs.length })
-      setRouteReady(true)
-    } catch (err) {
-      setError(err.response?.data?.error || err.message || 'Error al obtener la ruta.')
-    } finally {
-      setRouteLoading(false)
-    }
-  }
-
-  // ── Analyze route ────────────────────────────────────────────────────────
-  const handleAnalyze = async () => {
-    let data
-    if (showJson && inputJson.trim()) {
-      try { data = JSON.parse(inputJson) }
-      catch { setError('JSON inválido. Revisa el formato de los datos de entrada.'); return }
-    } else {
-      if (!routeData) { setError('Primero usa "Obtener Ruta" para cargar una ruta, o activa el modo avanzado JSON.'); return }
-      data = routeData
-    }
-
+  // ── Shared route analysis runner ───────────────────────────────────────────
+  // Extracted so it can be called automatically after route load AND manually.
+  const runAnalysis = async (data, currentDeliveryPct) => {
     setLoading(true)
     setError('')
     setTramos(null)
@@ -314,21 +268,32 @@ function MexicanRouteAnalysis({ token }) {
       if (token) headers['Authorization'] = `Token ${token}`
 
       const coordCount = (data.coordinates || []).length
-      const firstDeliveryIdx = Math.max(1, Math.round(coordCount * deliveryPct / 100))
+      const firstDeliveryIdx = Math.max(1, Math.round(coordCount * currentDeliveryPct / 100))
 
       const payload = {
         ...data,
-        vehicle_config: { vehicle_type: 'double_trailer', first_delivery_coord_index: firstDeliveryIdx },
+        vehicle_config: {
+          vehicle_type: 'double_trailer',
+          first_delivery_coord_index: firstDeliveryIdx,
+        },
       }
 
       const response = await axios.post(`${API_BASE}/route-analysis/analyze/`, payload, { headers })
       setTramos(response.data.tramos)
-      setSummary({ total_tramos: response.data.total_tramos, distancia_total_km: response.data.distancia_total_km })
-      setParsedInput({ coordinates: data.coordinates || [], references: data.references || [] })
+      setSummary({
+        total_tramos: response.data.total_tramos,
+        distancia_total_km: response.data.distancia_total_km,
+      })
+      setParsedInput({
+        coordinates: data.coordinates || [],
+        references: data.references || [],
+      })
     } catch (err) {
       const errData = err.response?.data
       if (errData && typeof errData === 'object') {
-        const msgs = Object.entries(errData).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join(' | ')
+        const msgs = Object.entries(errData)
+          .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
+          .join(' | ')
         setError(msgs)
       } else {
         setError(err.message || 'Error al analizar la ruta.')
@@ -338,7 +303,91 @@ function MexicanRouteAnalysis({ token }) {
     }
   }
 
-  // ── Export PDF ───────────────────────────────────────────────────────────
+  // ── Auto-extract indications (runs automatically on route load) ────────────
+  const startIndicationExtraction = async (routeCoords) => {
+    setIndicationsLoading(true)
+    setIndications([])
+    try {
+      const result = await fetchIndications(routeCoords, API_BASE, token)
+      setIndications(result)
+    } catch {
+      // Indication failures are non-critical — map and analysis still work
+    } finally {
+      setIndicationsLoading(false)
+    }
+  }
+
+  // ── Get route from ORS ─────────────────────────────────────────────────────
+  const handleGetRoute = async () => {
+    if (!origin.trim() || !destination.trim()) {
+      setError('Escribe al menos el origen y el destino.')
+      return
+    }
+    setRouteLoading(true)
+    setError('')
+    setRouteReady(false)
+    setRoutePreview(null)
+    setRouteData(null)
+    setTramos(null)
+    setSummary(null)
+    setParsedInput(null)
+    setIndications([])
+
+    try {
+      const allCities = [origin.trim(), ...stops.filter(s => s.trim()), destination.trim()]
+      const geocoded = await Promise.all(allCities.map(geocodeText))
+
+      const routeRes = await axios.post(
+        `https://api.openrouteservice.org/v2/directions/driving-car/geojson?api_key=${ORS_KEY}`,
+        { coordinates: geocoded, elevation: true, instructions: false },
+        { headers: { 'Content-Type': 'application/json' } },
+      )
+      const feature = routeRes.data.features[0]
+      const rawCoords = feature.geometry.coordinates
+      const distanceKm = Math.round(feature.properties.summary.distance / 1000)
+
+      const allPoints = rawCoords.map(([lon, lat, elevation]) => ({
+        lat, lon, elevation: Math.round(elevation || 0),
+      }))
+      const sampled = downsample(allPoints, 35)
+      const refs = filterNearbyRefs(sampled)
+
+      const label = allCities.join(' → ')
+      const newRouteData = { coordinates: sampled, references: refs }
+
+      setRouteData(newRouteData)
+      setRoutePreview({ label, km: distanceKm, points: sampled.length, refs: refs.length })
+      setRouteReady(true)
+
+      // Automatically start indication extraction and route analysis in parallel.
+      // Both are fire-and-forget from this function's perspective — they update
+      // state independently when they finish.
+      startIndicationExtraction(sampled)
+      runAnalysis(newRouteData, deliveryPct)
+    } catch (err) {
+      setError(err.response?.data?.error || err.message || 'Error al obtener la ruta.')
+    } finally {
+      setRouteLoading(false)
+    }
+  }
+
+  // ── Manual re-analysis (used after changing vehicle config or in JSON mode) ─
+  const handleAnalyze = async () => {
+    let data
+    if (showJson && inputJson.trim()) {
+      try { data = JSON.parse(inputJson) }
+      catch { setError('JSON inválido. Revisa el formato de los datos de entrada.'); return }
+    } else {
+      if (!routeData) {
+        setError('Primero usa “Obtener Ruta” para cargar una ruta, o activa el modo avanzado JSON.')
+        return
+      }
+      data = routeData
+    }
+    await runAnalysis(data, deliveryPct)
+  }
+
+  // ── Export PDF ─────────────────────────────────────────────────────────────
   const handleExportPdf = async () => {
     let data
     if (showJson && inputJson.trim()) {
@@ -365,7 +414,11 @@ function MexicanRouteAnalysis({ token }) {
         route_label: routePreview?.label || `Ruta ${coordCount} puntos — entrega al ${deliveryPct}%`,
       }
 
-      const response = await axios.post(`${API_BASE}/route-analysis/export-pdf/`, payload, { headers, responseType: 'blob' })
+      const response = await axios.post(
+        `${API_BASE}/route-analysis/export-pdf/`,
+        payload,
+        { headers, responseType: 'blob' },
+      )
 
       const disposition = response.headers['content-disposition'] || ''
       const match = disposition.match(/filename="?([^"]+)"?/)
@@ -383,21 +436,17 @@ function MexicanRouteAnalysis({ token }) {
     }
   }
 
-  // ── Stop management ──────────────────────────────────────────────────────
+  // ── Stop management ────────────────────────────────────────────────────────
   const addStop = () => {
     setStops(s => [...s, ''])
     setStopSuggs(s => [...s, []])
-    setRouteReady(false)
-    setRoutePreview(null)
+    setRouteReady(false); setRoutePreview(null)
   }
-
   const removeStop = (idx) => {
     setStops(s => s.filter((_, i) => i !== idx))
     setStopSuggs(s => s.filter((_, i) => i !== idx))
-    setRouteReady(false)
-    setRoutePreview(null)
+    setRouteReady(false); setRoutePreview(null)
   }
-
   const updateStop = async (idx, value) => {
     const newStops = [...stops]; newStops[idx] = value; setStops(newStops)
     setRouteReady(false); setRoutePreview(null)
@@ -405,22 +454,20 @@ function MexicanRouteAnalysis({ token }) {
     setStopSuggs(prev => { const n = [...prev]; n[idx] = suggs; return n })
   }
 
-  // ── Render ───────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="app">
-      {/* ── Input card ─────────────────────────────────────────────────── */}
+      {/* ── Input card ──────────────────────────────────────────────────── */}
       <div className="container">
         <h2>Análisis de Ruta — Territorio Mexicano</h2>
         <p className="route-desc">
-          Escribe el origen y el destino de la ruta. Puedes agregar paradas intermedias.
-          El sistema obtendrá la ruta real con elevación y generará el desglose completo de tramos,
-          clasificación de trazo y topografía, puntos de referencia viales y tabla PROCESO.
+          Escribe el origen y el destino. El sistema obtendrá la ruta con elevación,
+          extraerá automáticamente las indicaciones viales (semáforos, topes, casetas,
+          gasolineras, etc.) y generará el desglose completo de tramos y tabla PROCESO.
         </p>
 
-        {/* Origin */}
         <CityInput
-          id="origin"
-          label="Origen"
+          id="origin" label="Origen"
           placeholder="ej. Nuevo Laredo, Tamaulipas"
           value={origin}
           onChange={async (e) => {
@@ -432,13 +479,11 @@ function MexicanRouteAnalysis({ token }) {
           onClearSuggestions={() => setOriginSuggs([])}
         />
 
-        {/* Intermediate stops */}
         {stops.map((stop, idx) => (
           <div key={idx} style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
             <div style={{ flex: 1 }}>
               <CityInput
-                id={`stop-${idx}`}
-                label={`Parada ${idx + 1}`}
+                id={`stop-${idx}`} label={`Parada ${idx + 1}`}
                 placeholder="ej. Monterrey, Nuevo León"
                 value={stop}
                 onChange={e => updateStop(idx, e.target.value)}
@@ -451,37 +496,27 @@ function MexicanRouteAnalysis({ token }) {
               />
             </div>
             <button
-              type="button"
-              onClick={() => removeStop(idx)}
+              type="button" onClick={() => removeStop(idx)}
               style={{
                 background: '#fee2e2', color: '#dc2626', border: '1px solid #fca5a5',
                 borderRadius: '6px', padding: '8px 12px', cursor: 'pointer',
-                fontWeight: 700, fontSize: '14px', marginBottom: '0',
-                height: '38px', alignSelf: 'flex-end',
+                fontWeight: 700, fontSize: '14px', height: '38px', alignSelf: 'flex-end',
               }}
-            >
-              ✕
-            </button>
+            >✕</button>
           </div>
         ))}
 
-        {/* Add stop button */}
         <button
-          type="button"
-          onClick={addStop}
+          type="button" onClick={addStop}
           style={{
             background: '#f5f3ff', color: '#7c3aed', border: '1px solid #ddd6fe',
             borderRadius: '6px', padding: '7px 14px', cursor: 'pointer',
             fontWeight: 600, fontSize: '13px', marginTop: '4px', marginBottom: '4px',
           }}
-        >
-          + Agregar parada intermedia
-        </button>
+        >+ Agregar parada intermedia</button>
 
-        {/* Destination */}
         <CityInput
-          id="destination"
-          label="Destino"
+          id="destination" label="Destino"
           placeholder="ej. Guadalajara, Jalisco"
           value={destination}
           onChange={async (e) => {
@@ -496,8 +531,7 @@ function MexicanRouteAnalysis({ token }) {
         {/* Get Route button */}
         <div style={{ marginTop: '16px' }}>
           <button
-            type="button"
-            onClick={handleGetRoute}
+            type="button" onClick={handleGetRoute}
             disabled={routeLoading}
             style={{
               background: routeLoading ? '#9ca3af' : '#2563eb',
@@ -516,36 +550,70 @@ function MexicanRouteAnalysis({ token }) {
           </button>
         </div>
 
-        {/* Route preview badge */}
-        {routeReady && routePreview && (
+        {/* Multi-phase status badges */}
+        {(routeReady || loading || indicationsLoading) && (
           <div style={{
-            marginTop: '14px', padding: '12px 16px', background: '#f0fdf4',
-            border: '1px solid #86efac', borderRadius: '8px',
-            display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'center',
+            marginTop: '14px',
+            display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center',
           }}>
-            <span style={{ color: '#15803d', fontWeight: 700, fontSize: '13px' }}>
-              ✓ Ruta obtenida
-            </span>
-            <span style={{ fontSize: '12px', color: '#374151', flex: 1, minWidth: '160px' }}>
-              {routePreview.label}
-            </span>
-            <span style={{ fontSize: '12px', background: '#dcfce7', color: '#166534', padding: '2px 10px', borderRadius: '99px', fontWeight: 600 }}>
-              {routePreview.km} km
-            </span>
-            <span style={{ fontSize: '12px', background: '#eff6ff', color: '#1d4ed8', padding: '2px 10px', borderRadius: '99px', fontWeight: 600 }}>
-              {routePreview.points} puntos
-            </span>
-            <span style={{ fontSize: '12px', background: '#fef9c3', color: '#854d0e', padding: '2px 10px', borderRadius: '99px', fontWeight: 600 }}>
-              {routePreview.refs} referencias
-            </span>
+            {/* Route */}
+            {routePreview && (
+              <>
+                <span style={{
+                  fontSize: '12px', background: '#f0fdf4', color: '#15803d',
+                  padding: '3px 10px', borderRadius: '99px', fontWeight: 600,
+                }}>
+                  ✓ {routePreview.km} km
+                </span>
+                <span style={{
+                  fontSize: '12px', background: '#eff6ff', color: '#1d4ed8',
+                  padding: '3px 10px', borderRadius: '99px', fontWeight: 600,
+                }}>
+                  {routePreview.points} puntos
+                </span>
+              </>
+            )}
+
+            {/* Analysis status */}
+            {loading ? (
+              <span style={{
+                fontSize: '12px', background: '#f3f4f6', color: '#6b7280',
+                padding: '3px 10px', borderRadius: '99px', fontWeight: 600,
+              }}>
+                ⧗ Analizando tramos…
+              </span>
+            ) : summary ? (
+              <span style={{
+                fontSize: '12px', background: '#f5f3ff', color: '#6d28d9',
+                padding: '3px 10px', borderRadius: '99px', fontWeight: 600,
+              }}>
+                ✓ {summary.total_tramos} tramos
+              </span>
+            ) : null}
+
+            {/* Indication extraction status */}
+            {indicationsLoading ? (
+              <span style={{
+                fontSize: '12px', background: '#f3f4f6', color: '#6b7280',
+                padding: '3px 10px', borderRadius: '99px', fontWeight: 600,
+              }}>
+                ⧗ Extrayendo indicaciones…
+              </span>
+            ) : indications.length > 0 ? (
+              <span style={{
+                fontSize: '12px', background: '#f0fdfa', color: '#0f766e',
+                padding: '3px 10px', borderRadius: '99px', fontWeight: 600,
+              }}>
+                ✓ {indications.length} indicaciones
+              </span>
+            ) : null}
           </div>
         )}
 
         {/* Advanced JSON mode toggle */}
         <div style={{ marginTop: '20px' }}>
           <button
-            type="button"
-            onClick={() => setShowJson(v => !v)}
+            type="button" onClick={() => setShowJson(v => !v)}
             style={{
               background: 'none', border: 'none', color: '#6b7280',
               fontSize: '12px', cursor: 'pointer', padding: '0',
@@ -560,8 +628,7 @@ function MexicanRouteAnalysis({ token }) {
           <div style={{ marginTop: '12px' }}>
             <div className="route-input-row">
               <button
-                type="button"
-                className="sample-btn"
+                type="button" className="sample-btn"
                 onClick={() => {
                   setInputJson(JSON.stringify(SAMPLE_JSON, null, 2))
                   setTramos(null); setSummary(null); setParsedInput(null); setError('')
@@ -618,12 +685,18 @@ function MexicanRouteAnalysis({ token }) {
 
         {/* Analyze + Export buttons */}
         <div style={{ marginTop: '16px', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
-          <button type="button" onClick={handleAnalyze} disabled={loading || pdfLoading}>
-            {loading ? 'Analizando…' : 'Analizar Ruta'}
-          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            <button type="button" onClick={handleAnalyze} disabled={loading || pdfLoading}>
+              {loading ? 'Analizando…' : 'Analizar Ruta'}
+            </button>
+            {routeReady && (
+              <span style={{ fontSize: '10px', color: '#9ca3af' }}>
+                Recalcular con configuración de vehículo actual
+              </span>
+            )}
+          </div>
           <button
-            type="button"
-            onClick={handleExportPdf}
+            type="button" onClick={handleExportPdf}
             disabled={loading || pdfLoading}
             style={{
               background: pdfLoading ? '#9ca3af' : '#dc2626',
@@ -649,10 +722,10 @@ function MexicanRouteAnalysis({ token }) {
         </div>
       </div>
 
-      {/* ── Error banner ────────────────────────────────────────────────── */}
+      {/* ── Error banner ─────────────────────────────────────────────────── */}
       {error && <div className="error">{error}</div>}
 
-      {/* ── Summary stats ───────────────────────────────────────────────── */}
+      {/* ── Summary stats ────────────────────────────────────────────────── */}
       {summary && (
         <div className="container">
           <div className="route-summary">
@@ -669,19 +742,27 @@ function MexicanRouteAnalysis({ token }) {
         </div>
       )}
 
-      {/* ── Route map ───────────────────────────────────────────────────── */}
-      {tramos && parsedInput && (
+      {/*
+        Route map — shown as soon as the route is obtained, BEFORE tramo analysis
+        completes.  Tramo colouring is added once analysis returns.
+        Indication markers appear on their own LayerGroups with toggle controls.
+      */}
+      {routeReady && routeData && (
         <div className="container">
           <h2>Mapa de Ruta</h2>
           <RouteAnalysisMap
             tramos={tramos}
-            coordinates={parsedInput.coordinates}
-            references={parsedInput.references}
+            coordinates={parsedInput?.coordinates ?? routeData.coordinates}
+            references={parsedInput?.references ?? routeData.references}
+            indications={indications}
+            visibleLayers={visibleLayers}
+            onToggleLayer={handleToggleLayer}
+            indicationsLoading={indicationsLoading}
           />
         </div>
       )}
 
-      {/* ── Tramo table ─────────────────────────────────────────────────── */}
+      {/* ── Tramo table ───────────────────────────────────────────────────── */}
       {tramos && tramos.length > 0 && (
         <div className="container">
           <h2>Tabla de Tramos</h2>

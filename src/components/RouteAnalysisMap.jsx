@@ -1,7 +1,9 @@
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup, Polyline, LayerGroup, useMap } from 'react-leaflet'
 import { useEffect } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import MapLayerControls from './MapLayerControls'
+import { INDICATION_TYPES, countByType } from '../services/indicationService'
 
 // ── Trazo colours ─────────────────────────────────────────────────────────────
 const TRAZO_COLOR = {
@@ -12,7 +14,7 @@ const TRAZO_COLOR = {
   'Curva Descendente': '#f97316',
 }
 
-// ── Reference-point colours / letters ────────────────────────────────────────
+// ── Static reference-point colours / letters ──────────────────────────────────
 const REF_COLOR  = { caseta: '#ef4444', paradero: '#0ea5e9', gasolinera: '#f97316', rampa: '#8b5cf6' }
 const REF_LETTER = { caseta: 'C',       paradero: 'P',       gasolinera: 'G',       rampa: 'R' }
 const REF_LABEL  = { caseta: 'Caseta',  paradero: 'Paradero', gasolinera: 'Gasolinera', rampa: 'Rampa' }
@@ -45,7 +47,28 @@ const createRefIcon = (type) => {
   })
 }
 
-// ── Auto-fit helper ───────────────────────────────────────────────────────────
+// Indication icons are intentionally smaller (14 px) than route markers so
+// they don't hide road geometry.  Semi-transparency keeps roads legible.
+const createIndicationIcon = (type) => {
+  const meta = INDICATION_TYPES[type] || { icon: '?', color: '#6b7280' }
+  return L.divIcon({
+    className: '',
+    html: `<div style="
+      background:${meta.color};
+      color:white;
+      width:14px;height:14px;
+      border-radius:3px;
+      border:1.5px solid rgba(255,255,255,0.85);
+      box-shadow:0 1px 4px rgba(0,0,0,0.35);
+      display:flex;align-items:center;justify-content:center;
+      font-weight:700;font-size:9px;font-family:system-ui,sans-serif;line-height:1;
+      opacity:0.9;
+    ">${meta.icon}</div>`,
+    iconSize: [14, 14], iconAnchor: [7, 7], popupAnchor: [0, -9],
+  })
+}
+
+// ── Auto-fit bounds helper ────────────────────────────────────────────────────
 function FitBounds({ positions }) {
   const map = useMap()
   useEffect(() => {
@@ -54,7 +77,7 @@ function FitBounds({ positions }) {
   return null
 }
 
-// ── Reconstruct the input-coordinate slice belonging to each tramo ────────────
+// ── Map each tramo back to its slice of the input coordinates ─────────────────
 function buildTramoPositions(tramos, coordinates) {
   const EPS = 1e-5
   const idx = (pos) =>
@@ -75,76 +98,149 @@ function buildTramoPositions(tramos, coordinates) {
   })
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
-function RouteAnalysisMap({ tramos, coordinates, references }) {
-  if (!tramos?.length || !coordinates?.length) return null
+// ── Main component ────────────────────────────────────────────────────────────
+function RouteAnalysisMap({
+  tramos,
+  coordinates,
+  references,
+  indications,
+  visibleLayers,
+  onToggleLayer,
+  indicationsLoading,
+}) {
+  if (!coordinates?.length) return null
 
-  const allPositions    = coordinates.map((c) => [c.lat, c.lon])
-  const tramoPositions  = buildTramoPositions(tramos, coordinates)
-  const inputRefs       = (references || []).filter((r) => REF_COLOR[r.type])
+  const allPositions   = coordinates.map((c) => [c.lat, c.lon])
+  const tramoPositions = tramos?.length ? buildTramoPositions(tramos, coordinates) : []
+  const inputRefs      = (references || []).filter((r) => REF_COLOR[r.type])
+  const indicationCounts = countByType(indications)
+
+  // Group auto-extracted indications by type for per-LayerGroup rendering
+  const indicationsByType = (indications || []).reduce((acc, ind) => {
+    if (!acc[ind.type]) acc[ind.type] = []
+    acc[ind.type].push(ind)
+    return acc
+  }, {})
+
+  const showLayerPanel =
+    (indications?.length > 0 || indicationsLoading) && visibleLayers && onToggleLayer
 
   return (
     <>
-      <MapContainer
-        center={[23.6345, -102.5528]}
-        zoom={5}
-        style={{ height: '500px', width: '100%', borderRadius: '10px' }}
-      >
-        <FitBounds positions={allPositions} />
-        <TileLayer
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        />
+      {/*
+        Wrapper is position:relative so the floating layer-control panel can
+        be position:absolute over the map without being a Leaflet child.
+      */}
+      <div style={{ position: 'relative' }}>
+        <MapContainer
+          center={[23.6345, -102.5528]}
+          zoom={5}
+          style={{ height: '500px', width: '100%', borderRadius: '10px' }}
+        >
+          <FitBounds positions={allPositions} />
+          <TileLayer
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          />
 
-        {/* Thin background line for the full route */}
-        <Polyline positions={allPositions} color="#9ca3af" weight={2} opacity={0.45} />
+          {/* Full-route grey polyline — always visible, sits below coloured layers */}
+          <Polyline positions={allPositions} color="#9ca3af" weight={2} opacity={0.45} />
 
-        {/* Coloured polyline per tramo */}
-        {tramos.map((tramo, i) => (
-          <Polyline
-            key={tramo.numero}
-            positions={tramoPositions[i]}
-            color={TRAZO_COLOR[tramo.trazo_topografia] || '#6b7280'}
-            weight={5}
-            opacity={0.9}
-          >
-            <Popup>
-              <strong>Tramo {tramo.numero}</strong><br />
-              {tramo.trazo_topografia}
-            </Popup>
-          </Polyline>
-        ))}
+          {/* Coloured per-tramo polylines (rendered only after analysis completes) */}
+          {tramos?.map((tramo, i) => (
+            <Polyline
+              key={tramo.numero}
+              positions={tramoPositions[i]}
+              color={TRAZO_COLOR[tramo.trazo_topografia] || '#6b7280'}
+              weight={5}
+              opacity={0.9}
+            >
+              <Popup>
+                <strong>Tramo {tramo.numero}</strong><br />
+                {tramo.trazo_topografia}
+              </Popup>
+            </Polyline>
+          ))}
 
-        {/* Numbered markers at each tramo start */}
-        {tramos.map((tramo) => (
-          <Marker
-            key={`tn-${tramo.numero}`}
-            position={[tramo.posicion_inicial.lat, tramo.posicion_inicial.lon]}
-            icon={createNumberIcon(tramo.numero)}
-          >
-            <Popup>
-              <strong>Tramo {tramo.numero}</strong><br />
-              {tramo.trazo_topografia}
-            </Popup>
-          </Marker>
-        ))}
+          {/* Numbered markers at each tramo start */}
+          {tramos?.map((tramo) => (
+            <Marker
+              key={`tn-${tramo.numero}`}
+              position={[tramo.posicion_inicial.lat, tramo.posicion_inicial.lon]}
+              icon={createNumberIcon(tramo.numero)}
+            >
+              <Popup>
+                <strong>Tramo {tramo.numero}</strong><br />
+                {tramo.trazo_topografia}
+              </Popup>
+            </Marker>
+          ))}
 
-        {/* Reference-point markers (only those from the input JSON with lat/lon) */}
-        {inputRefs.map((ref, i) => (
-          <Marker
-            key={`ref-${i}`}
-            position={[ref.lat, ref.lon]}
-            icon={createRefIcon(ref.type)}
-          >
-            <Popup>
-              <strong>{ref.name}</strong><br />
-              <span style={{ textTransform: 'capitalize' }}>{REF_LABEL[ref.type]}</span>
-            </Popup>
-          </Marker>
-        ))}
-      </MapContainer>
+          {/* Static reference markers (casetas, paraderos, gasolineras, rampas) */}
+          {inputRefs.map((ref, i) => (
+            <Marker
+              key={`ref-${i}`}
+              position={[ref.lat, ref.lon]}
+              icon={createRefIcon(ref.type)}
+            >
+              <Popup>
+                <strong>{ref.name}</strong><br />
+                <span style={{ textTransform: 'capitalize' }}>{REF_LABEL[ref.type]}</span>
+              </Popup>
+            </Marker>
+          ))}
 
-      {/* Legend */}
+          {/*
+            Auto-extracted indication layers.
+            Each type lives in its own LayerGroup so toggling visibility
+            is a pure React render without redrawing the base map or other layers.
+          */}
+          {Object.entries(indicationsByType).map(([type, items]) =>
+            visibleLayers?.has(type) ? (
+              <LayerGroup key={type}>
+                {items.map((ind, i) => (
+                  <Marker
+                    key={`ind-${type}-${i}`}
+                    position={[ind.lat, ind.lon]}
+                    icon={createIndicationIcon(type)}
+                  >
+                    <Popup>
+                      <strong>{ind.label}</strong><br />
+                      <span style={{ fontSize: '11px', color: '#6b7280' }}>
+                        {INDICATION_TYPES[type]?.label}
+                      </span>
+                      {ind.metadata?.maxspeed && (
+                        <><br /><span>Límite: {ind.metadata.maxspeed} km/h</span></>
+                      )}
+                    </Popup>
+                  </Marker>
+                ))}
+              </LayerGroup>
+            ) : null
+          )}
+        </MapContainer>
+
+        {/* Layer-control panel — positioned over the map, outside MapContainer
+            so it does not interfere with Leaflet's internal event handling */}
+        {showLayerPanel && (
+          <div style={{
+            position: 'absolute',
+            top: '10px',
+            right: '10px',
+            zIndex: 9999,
+            pointerEvents: 'all',
+          }}>
+            <MapLayerControls
+              visibleLayers={visibleLayers}
+              onToggle={onToggleLayer}
+              indicationCounts={indicationCounts}
+              loading={indicationsLoading}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Trazo legend */}
       <div className="map-legend">
         {Object.entries(TRAZO_COLOR).map(([label, color]) => (
           <div key={label} className="legend-item">
