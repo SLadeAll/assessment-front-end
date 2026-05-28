@@ -48,44 +48,6 @@ const MEXICAN_REFERENCES = [
   { lat: 20.850, lon: -102.700, type: 'rampa',      name: 'Rampa Tepatitlán Km 1152' },
 ]
 
-const SAMPLE_JSON = {
-  coordinates: [
-    { lat: 27.476, lon: -99.515, elevation: 218 },
-    { lat: 27.280, lon: -99.516, elevation: 226 },
-    { lat: 27.100, lon: -99.530, elevation: 240 },
-    { lat: 26.870, lon: -99.685, elevation: 292 },
-    { lat: 26.500, lon: -100.192, elevation: 352 },
-    { lat: 26.300, lon: -100.245, elevation: 515 },
-    { lat: 26.150, lon: -100.260, elevation: 725 },
-    { lat: 25.960, lon: -100.270, elevation: 598 },
-    { lat: 25.686, lon: -100.316, elevation: 537 },
-    { lat: 25.620, lon: -100.430, elevation: 700 },
-    { lat: 25.570, lon: -100.520, elevation: 955 },
-    { lat: 25.560, lon: -100.640, elevation: 1205 },
-    { lat: 25.530, lon: -100.740, elevation: 1385 },
-    { lat: 25.500, lon: -100.870, elevation: 1525 },
-    { lat: 25.428, lon: -101.003, elevation: 1592 },
-    { lat: 25.000, lon: -101.100, elevation: 1652 },
-    { lat: 24.500, lon: -100.980, elevation: 1822 },
-    { lat: 23.660, lon: -100.638, elevation: 1685 },
-    { lat: 23.000, lon: -100.720, elevation: 1812 },
-    { lat: 22.600, lon: -100.900, elevation: 1860 },
-    { lat: 22.149, lon: -100.979, elevation: 1877 },
-    { lat: 21.700, lon: -100.755, elevation: 1853 },
-    { lat: 21.200, lon: -100.558, elevation: 1839 },
-    { lat: 20.593, lon: -100.389, elevation: 1820 },
-    { lat: 20.750, lon: -100.900, elevation: 1786 },
-    { lat: 21.000, lon: -101.400, elevation: 1737 },
-    { lat: 21.358, lon: -101.933, elevation: 1562 },
-    { lat: 21.100, lon: -102.300, elevation: 1692 },
-    { lat: 20.818, lon: -102.745, elevation: 1757 },
-    { lat: 20.720, lon: -103.000, elevation: 1628 },
-    { lat: 20.680, lon: -103.200, elevation: 1587 },
-    { lat: 20.659, lon: -103.350, elevation: 1545 },
-  ],
-  references: MEXICAN_REFERENCES,
-}
-
 const TRAZO_STYLE = {
   'Recta':              { bg: '#eff6ff', color: '#1d4ed8' },
   'Recta Ascendente':   { bg: '#f0fdf4', color: '#15803d' },
@@ -122,7 +84,10 @@ function CoordCell({ pos }) {
   return <span className="coord-cell">{toDMS(pos.lat, pos.lon)}</span>
 }
 
-function filterNearbyRefs(routeCoords, maxKm = 20) {
+// Filter MEXICAN_REFERENCES to those within maxKm of any point in routeCoords.
+// Must be called with the FULL dense ORS coordinate array (not the downsampled
+// one) so that references between sample points are not missed.
+function filterNearbyRefs(routeCoords, maxKm = 10) {
   return MEXICAN_REFERENCES.filter(ref =>
     routeCoords.some(c => {
       const dlat = (ref.lat - c.lat) * 111
@@ -193,7 +158,6 @@ function CityInput({ id, label, placeholder, value, onChange, suggestions, onSel
 
 // ── Main component ────────────────────────────────────────────────────────────
 function MexicanRouteAnalysis({ token }) {
-  // Dynamic form state
   const [origin, setOrigin] = useState('')
   const [destination, setDestination] = useState('')
   const [stops, setStops] = useState([])
@@ -203,27 +167,18 @@ function MexicanRouteAnalysis({ token }) {
   const [routeLoading, setRouteLoading] = useState(false)
   const [routeReady, setRouteReady] = useState(false)
   const [routePreview, setRoutePreview] = useState(null)
-
-  // Route data shared between map and analysis
   const [routeData, setRouteData] = useState(null)
 
-  // Route analysis state
   const [tramos, setTramos] = useState(null)
   const [summary, setSummary] = useState(null)
   const [parsedInput, setParsedInput] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [pdfLoading, setPdfLoading] = useState(false)
-  const [deliveryPct, setDeliveryPct] = useState(50)
 
-  // Auto-extracted indication layers
   const [indications, setIndications] = useState([])
   const [indicationsLoading, setIndicationsLoading] = useState(false)
   const [visibleLayers, setVisibleLayers] = useState(DEFAULT_VISIBLE_LAYERS)
-
-  // Advanced JSON mode
-  const [showJson, setShowJson] = useState(false)
-  const [inputJson, setInputJson] = useState('')
 
   // ── Layer toggle ───────────────────────────────────────────────────────────
   const handleToggleLayer = (type) => {
@@ -254,9 +209,8 @@ function MexicanRouteAnalysis({ token }) {
     return r.data.features[0].geometry.coordinates
   }
 
-  // ── Shared route analysis runner ───────────────────────────────────────────
-  // Extracted so it can be called automatically after route load AND manually.
-  const runAnalysis = async (data, currentDeliveryPct) => {
+  // ── Route analysis (called automatically on route load and manually via button) ─
+  const runAnalysis = async (data) => {
     setLoading(true)
     setError('')
     setTramos(null)
@@ -267,18 +221,11 @@ function MexicanRouteAnalysis({ token }) {
       const headers = { 'Content-Type': 'application/json' }
       if (token) headers['Authorization'] = `Token ${token}`
 
-      const coordCount = (data.coordinates || []).length
-      const firstDeliveryIdx = Math.max(1, Math.round(coordCount * currentDeliveryPct / 100))
-
-      const payload = {
-        ...data,
-        vehicle_config: {
-          vehicle_type: 'double_trailer',
-          first_delivery_coord_index: firstDeliveryIdx,
-        },
-      }
-
-      const response = await axios.post(`${API_BASE}/route-analysis/analyze/`, payload, { headers })
+      const response = await axios.post(
+        `${API_BASE}/route-analysis/analyze/`,
+        data,
+        { headers },
+      )
       setTramos(response.data.tramos)
       setSummary({
         total_tramos: response.data.total_tramos,
@@ -303,7 +250,7 @@ function MexicanRouteAnalysis({ token }) {
     }
   }
 
-  // ── Auto-extract indications (runs automatically on route load) ────────────
+  // ── Indication extraction (automatic, non-blocking) ───────────────────────
   const startIndicationExtraction = async (routeCoords) => {
     setIndicationsLoading(true)
     setIndications([])
@@ -311,7 +258,7 @@ function MexicanRouteAnalysis({ token }) {
       const result = await fetchIndications(routeCoords, API_BASE, token)
       setIndications(result)
     } catch {
-      // Indication failures are non-critical — map and analysis still work
+      // Non-critical — map and analysis still work without indications
     } finally {
       setIndicationsLoading(false)
     }
@@ -343,14 +290,19 @@ function MexicanRouteAnalysis({ token }) {
         { headers: { 'Content-Type': 'application/json' } },
       )
       const feature = routeRes.data.features[0]
-      const rawCoords = feature.geometry.coordinates
+      const rawCoords = feature.geometry.coordinates  // [lon, lat, elev] — full dense array
       const distanceKm = Math.round(feature.properties.summary.distance / 1000)
 
       const allPoints = rawCoords.map(([lon, lat, elevation]) => ({
         lat, lon, elevation: Math.round(elevation || 0),
       }))
+
+      // Downsample for backend analysis (reduces payload size)
       const sampled = downsample(allPoints, 35)
-      const refs = filterNearbyRefs(sampled)
+
+      // Filter references against the FULL dense route so that points between
+      // sample boundaries are not missed (previous bug: used sampled, 20 km).
+      const refs = filterNearbyRefs(allPoints, 10)
 
       const label = allCities.join(' → ')
       const newRouteData = { coordinates: sampled, references: refs }
@@ -359,11 +311,9 @@ function MexicanRouteAnalysis({ token }) {
       setRoutePreview({ label, km: distanceKm, points: sampled.length, refs: refs.length })
       setRouteReady(true)
 
-      // Automatically start indication extraction and route analysis in parallel.
-      // Both are fire-and-forget from this function's perspective — they update
-      // state independently when they finish.
+      // Fire both in parallel — each updates state independently when done
       startIndicationExtraction(sampled)
-      runAnalysis(newRouteData, deliveryPct)
+      runAnalysis(newRouteData)
     } catch (err) {
       setError(err.response?.data?.error || err.message || 'Error al obtener la ruta.')
     } finally {
@@ -371,32 +321,18 @@ function MexicanRouteAnalysis({ token }) {
     }
   }
 
-  // ── Manual re-analysis (used after changing vehicle config or in JSON mode) ─
+  // ── Manual re-analysis (e.g. after auto-analysis fails) ────────────────────
   const handleAnalyze = async () => {
-    let data
-    if (showJson && inputJson.trim()) {
-      try { data = JSON.parse(inputJson) }
-      catch { setError('JSON inválido. Revisa el formato de los datos de entrada.'); return }
-    } else {
-      if (!routeData) {
-        setError('Primero usa “Obtener Ruta” para cargar una ruta, o activa el modo avanzado JSON.')
-        return
-      }
-      data = routeData
+    if (!routeData) {
+      setError('Primero usa “Obtener Ruta” para cargar una ruta.')
+      return
     }
-    await runAnalysis(data, deliveryPct)
+    await runAnalysis(routeData)
   }
 
   // ── Export PDF ─────────────────────────────────────────────────────────────
   const handleExportPdf = async () => {
-    let data
-    if (showJson && inputJson.trim()) {
-      try { data = JSON.parse(inputJson) }
-      catch { setError('JSON inválido. Corrígelo antes de exportar.'); setPdfLoading(false); return }
-    } else {
-      if (!routeData) { setError('Primero obtén la ruta antes de exportar.'); return }
-      data = routeData
-    }
+    if (!routeData) { setError('Primero obtén la ruta antes de exportar.'); return }
 
     setPdfLoading(true)
     setError('')
@@ -405,13 +341,9 @@ function MexicanRouteAnalysis({ token }) {
       const headers = { 'Content-Type': 'application/json' }
       if (token) headers['Authorization'] = `Token ${token}`
 
-      const coordCount = (data.coordinates || []).length
-      const firstDeliveryIdx = Math.max(1, Math.round(coordCount * deliveryPct / 100))
-
       const payload = {
-        ...data,
-        vehicle_config: { vehicle_type: 'double_trailer', first_delivery_coord_index: firstDeliveryIdx },
-        route_label: routePreview?.label || `Ruta ${coordCount} puntos — entrega al ${deliveryPct}%`,
+        ...routeData,
+        route_label: routePreview?.label || 'Análisis de Ruta',
       }
 
       const response = await axios.post(
@@ -457,13 +389,12 @@ function MexicanRouteAnalysis({ token }) {
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="app">
-      {/* ── Input card ──────────────────────────────────────────────────── */}
       <div className="container">
         <h2>Análisis de Ruta — Territorio Mexicano</h2>
         <p className="route-desc">
           Escribe el origen y el destino. El sistema obtendrá la ruta con elevación,
-          extraerá automáticamente las indicaciones viales (semáforos, topes, casetas,
-          gasolineras, etc.) y generará el desglose completo de tramos y tabla PROCESO.
+          extraerá automáticamente las indicaciones viales y generará el desglose
+          completo de tramos, topografía y tabla PROCESO.
         </p>
 
         <CityInput
@@ -528,7 +459,6 @@ function MexicanRouteAnalysis({ token }) {
           onClearSuggestions={() => setDestSuggs([])}
         />
 
-        {/* Get Route button */}
         <div style={{ marginTop: '16px' }}>
           <button
             type="button" onClick={handleGetRoute}
@@ -550,159 +480,58 @@ function MexicanRouteAnalysis({ token }) {
           </button>
         </div>
 
-        {/* Multi-phase status badges */}
+        {/* Live status badges for each processing phase */}
         {(routeReady || loading || indicationsLoading) && (
-          <div style={{
-            marginTop: '14px',
-            display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center',
-          }}>
-            {/* Route */}
+          <div style={{ marginTop: '14px', display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
             {routePreview && (
               <>
-                <span style={{
-                  fontSize: '12px', background: '#f0fdf4', color: '#15803d',
-                  padding: '3px 10px', borderRadius: '99px', fontWeight: 600,
-                }}>
+                <span style={{ fontSize: '12px', background: '#f0fdf4', color: '#15803d', padding: '3px 10px', borderRadius: '99px', fontWeight: 600 }}>
                   ✓ {routePreview.km} km
                 </span>
-                <span style={{
-                  fontSize: '12px', background: '#eff6ff', color: '#1d4ed8',
-                  padding: '3px 10px', borderRadius: '99px', fontWeight: 600,
-                }}>
-                  {routePreview.points} puntos
+                <span style={{ fontSize: '12px', background: '#eff6ff', color: '#1d4ed8', padding: '3px 10px', borderRadius: '99px', fontWeight: 600 }}>
+                  {routePreview.points} puntos muestreados
                 </span>
+                {routePreview.refs > 0 && (
+                  <span style={{ fontSize: '12px', background: '#fef9c3', color: '#854d0e', padding: '3px 10px', borderRadius: '99px', fontWeight: 600 }}>
+                    {routePreview.refs} referencias
+                  </span>
+                )}
               </>
             )}
-
-            {/* Analysis status */}
             {loading ? (
-              <span style={{
-                fontSize: '12px', background: '#f3f4f6', color: '#6b7280',
-                padding: '3px 10px', borderRadius: '99px', fontWeight: 600,
-              }}>
+              <span style={{ fontSize: '12px', background: '#f3f4f6', color: '#6b7280', padding: '3px 10px', borderRadius: '99px', fontWeight: 600 }}>
                 ⧗ Analizando tramos…
               </span>
             ) : summary ? (
-              <span style={{
-                fontSize: '12px', background: '#f5f3ff', color: '#6d28d9',
-                padding: '3px 10px', borderRadius: '99px', fontWeight: 600,
-              }}>
+              <span style={{ fontSize: '12px', background: '#f5f3ff', color: '#6d28d9', padding: '3px 10px', borderRadius: '99px', fontWeight: 600 }}>
                 ✓ {summary.total_tramos} tramos
               </span>
             ) : null}
-
-            {/* Indication extraction status */}
             {indicationsLoading ? (
-              <span style={{
-                fontSize: '12px', background: '#f3f4f6', color: '#6b7280',
-                padding: '3px 10px', borderRadius: '99px', fontWeight: 600,
-              }}>
+              <span style={{ fontSize: '12px', background: '#f3f4f6', color: '#6b7280', padding: '3px 10px', borderRadius: '99px', fontWeight: 600 }}>
                 ⧗ Extrayendo indicaciones…
               </span>
             ) : indications.length > 0 ? (
-              <span style={{
-                fontSize: '12px', background: '#f0fdfa', color: '#0f766e',
-                padding: '3px 10px', borderRadius: '99px', fontWeight: 600,
-              }}>
+              <span style={{ fontSize: '12px', background: '#f0fdfa', color: '#0f766e', padding: '3px 10px', borderRadius: '99px', fontWeight: 600 }}>
                 ✓ {indications.length} indicaciones
               </span>
             ) : null}
           </div>
         )}
 
-        {/* Advanced JSON mode toggle */}
-        <div style={{ marginTop: '20px' }}>
-          <button
-            type="button" onClick={() => setShowJson(v => !v)}
-            style={{
-              background: 'none', border: 'none', color: '#6b7280',
-              fontSize: '12px', cursor: 'pointer', padding: '0',
-              textDecoration: 'underline', fontWeight: 500,
-            }}
-          >
-            {showJson ? '▲ Ocultar modo avanzado (JSON)' : '▼ Modo avanzado: ingresar coordenadas JSON'}
+        {/* Action buttons */}
+        <div style={{ marginTop: '20px', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <button type="button" onClick={handleAnalyze} disabled={loading || pdfLoading || !routeData}>
+            {loading ? 'Analizando…' : 'Analizar Ruta'}
           </button>
-        </div>
-
-        {showJson && (
-          <div style={{ marginTop: '12px' }}>
-            <div className="route-input-row">
-              <button
-                type="button" className="sample-btn"
-                onClick={() => {
-                  setInputJson(JSON.stringify(SAMPLE_JSON, null, 2))
-                  setTramos(null); setSummary(null); setParsedInput(null); setError('')
-                  setRouteReady(false); setRoutePreview(null)
-                }}
-              >
-                Cargar ejemplo (Nuevo Laredo – Qro. – Gdl.)
-              </button>
-            </div>
-            <div className="form-field" style={{ marginTop: '10px' }}>
-              <label>Datos de Ruta (JSON)</label>
-              <textarea
-                className="route-input"
-                value={inputJson}
-                onChange={(e) => { setInputJson(e.target.value); setRouteReady(false) }}
-                rows={12}
-                spellCheck={false}
-              />
-            </div>
-            <div className="route-schema-hint">
-              <strong>Formato:</strong>{' '}
-              <code>{'{ "coordinates": [{ "lat", "lon", "elevation"? }], "references": [{ "lat", "lon", "type": "caseta"|"paradero"|"rampa", "name" }] }'}</code>
-            </div>
-          </div>
-        )}
-
-        {/* Vehicle config */}
-        <div style={{ marginTop: '20px', padding: '16px', background: '#f8f7ff', border: '1px solid #e9d5ff', borderRadius: '8px' }}>
-          <p style={{ margin: '0 0 12px', fontWeight: 700, fontSize: '13px', color: '#6d28d9' }}>
-            Configuración del Vehículo — Camión de Doble Remolque
-          </p>
-          <p style={{ margin: '0 0 10px', fontSize: '12px', color: '#4b5563' }}>
-            Sale con <strong>carga completa</strong>. Entrega la mitad en el <strong>primer destino</strong> y continúa con <strong>media carga</strong>.
-          </p>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
-            <label style={{ fontSize: '12px', fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>
-              Primera entrega al:
-            </label>
-            <input
-              type="range" min={10} max={90} step={5} value={deliveryPct}
-              onChange={e => setDeliveryPct(Number(e.target.value))}
-              style={{ flex: 1, minWidth: '140px', accentColor: '#7c3aed' }}
-            />
-            <span style={{ minWidth: '48px', fontSize: '13px', fontWeight: 700, color: '#7c3aed', textAlign: 'center' }}>
-              {deliveryPct}%
-            </span>
-            <span style={{ fontSize: '11px', color: '#6b7280' }}>de la ruta</span>
-          </div>
-          <p style={{ margin: '10px 0 0', fontSize: '11px', color: '#9ca3af' }}>
-            Los tramos antes del {deliveryPct}% se analizarán con <strong>Carga Completa</strong>;
-            los tramos restantes con <strong>Media Carga</strong>.
-          </p>
-        </div>
-
-        {/* Analyze + Export buttons */}
-        <div style={{ marginTop: '16px', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-            <button type="button" onClick={handleAnalyze} disabled={loading || pdfLoading}>
-              {loading ? 'Analizando…' : 'Analizar Ruta'}
-            </button>
-            {routeReady && (
-              <span style={{ fontSize: '10px', color: '#9ca3af' }}>
-                Recalcular con configuración de vehículo actual
-              </span>
-            )}
-          </div>
           <button
             type="button" onClick={handleExportPdf}
-            disabled={loading || pdfLoading}
+            disabled={loading || pdfLoading || !routeData}
             style={{
-              background: pdfLoading ? '#9ca3af' : '#dc2626',
+              background: (pdfLoading || !routeData) ? '#9ca3af' : '#dc2626',
               color: '#fff', border: 'none', borderRadius: '6px',
               padding: '8px 18px', fontWeight: 600, fontSize: '14px',
-              cursor: pdfLoading ? 'not-allowed' : 'pointer',
+              cursor: (pdfLoading || !routeData) ? 'not-allowed' : 'pointer',
               display: 'flex', alignItems: 'center', gap: '7px',
             }}
           >
@@ -716,16 +545,14 @@ function MexicanRouteAnalysis({ token }) {
           </button>
           {pdfLoading && (
             <span style={{ fontSize: '12px', color: '#6b7280' }}>
-              Generando mapas y tabla PROCESO — esto puede tardar unos segundos…
+              Generando mapas y tabla PROCESO…
             </span>
           )}
         </div>
       </div>
 
-      {/* ── Error banner ─────────────────────────────────────────────────── */}
       {error && <div className="error">{error}</div>}
 
-      {/* ── Summary stats ────────────────────────────────────────────────── */}
       {summary && (
         <div className="container">
           <div className="route-summary">
@@ -742,11 +569,7 @@ function MexicanRouteAnalysis({ token }) {
         </div>
       )}
 
-      {/*
-        Route map — shown as soon as the route is obtained, BEFORE tramo analysis
-        completes.  Tramo colouring is added once analysis returns.
-        Indication markers appear on their own LayerGroups with toggle controls.
-      */}
+      {/* Map appears immediately on route load; tramo colouring added after analysis */}
       {routeReady && routeData && (
         <div className="container">
           <h2>Mapa de Ruta</h2>
@@ -762,7 +585,6 @@ function MexicanRouteAnalysis({ token }) {
         </div>
       )}
 
-      {/* ── Tramo table ───────────────────────────────────────────────────── */}
       {tramos && tramos.length > 0 && (
         <div className="container">
           <h2>Tabla de Tramos</h2>
@@ -784,12 +606,8 @@ function MexicanRouteAnalysis({ token }) {
                       <td style={{ fontWeight: 700, textAlign: 'center', color: '#6d28d9', verticalAlign: 'top' }}>
                         {tramo.numero}
                       </td>
-                      <td style={{ verticalAlign: 'top' }}>
-                        <CoordCell pos={tramo.posicion_inicial} />
-                      </td>
-                      <td style={{ verticalAlign: 'top' }}>
-                        <CoordCell pos={tramo.posicion_final} />
-                      </td>
+                      <td style={{ verticalAlign: 'top' }}><CoordCell pos={tramo.posicion_inicial} /></td>
+                      <td style={{ verticalAlign: 'top' }}><CoordCell pos={tramo.posicion_final} /></td>
                       <td style={{ verticalAlign: 'top' }}>
                         <TrazoBadge trazo={tramo.trazo_topografia} />
                         {tramo.risk_analysis && (
