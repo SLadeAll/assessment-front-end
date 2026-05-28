@@ -7,7 +7,10 @@ import { fetchIndications, DEFAULT_VISIBLE_LAYERS } from '../services/indication
 const API_BASE = `${import.meta.env.VITE_API_URL ?? 'https://eld-backend-one.vercel.app'}/api`
 const ORS_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjMxZDk5OTJjNGM5MDRkMWE5M2ExYzhjZGU0OTljZDhmIiwiaCI6Im11cm11cjY0In0='
 
-// Known reference points along major Mexican federal highways (static database)
+// Known reference points along major Mexican federal highways (static database).
+// These are sent to the backend which filters them by proximity to the actual
+// route (MAX_REF_DISTANCE_M = 25 km); the backend returns matched_references
+// which the frontend uses for map markers.
 const MEXICAN_REFERENCES = [
   { lat: 27.160, lon: -99.520,  type: 'caseta',    name: 'Caseta Colombia Solidaridad' },
   { lat: 26.490, lon: -100.200, type: 'caseta',    name: 'Caseta Sabinas Hidalgo' },
@@ -84,10 +87,11 @@ function CoordCell({ pos }) {
   return <span className="coord-cell">{toDMS(pos.lat, pos.lon)}</span>
 }
 
-// Filter MEXICAN_REFERENCES to those within maxKm of any point in routeCoords.
-// Must be called with the FULL dense ORS coordinate array (not the downsampled
-// one) so that references between sample points are not missed.
-function filterNearbyRefs(routeCoords, maxKm = 10) {
+// Pre-filter MEXICAN_REFERENCES to those within maxKm of any dense route point.
+// Used only for the initial map render (before the backend responds); the backend
+// performs its own haversine check and returns matched_references which becomes
+// the authoritative source after analysis completes.
+function filterNearbyRefs(routeCoords, maxKm = 25) {
   return MEXICAN_REFERENCES.filter(ref =>
     routeCoords.some(c => {
       const dlat = (ref.lat - c.lat) * 111
@@ -114,7 +118,7 @@ function downsample(coords, targetKm = 35) {
   return result
 }
 
-// ── Autocomplete input ────────────────────────────────────────────────────────
+// ── Autocomplete input ──────────────────────────────────────────────────────
 function CityInput({ id, label, placeholder, value, onChange, suggestions, onSelect, onClearSuggestions }) {
   return (
     <div className="form-field" style={{ position: 'relative' }}>
@@ -156,7 +160,7 @@ function CityInput({ id, label, placeholder, value, onChange, suggestions, onSel
   )
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
+// ── Main component ─────────────────────────────────────────────────────────────
 function MexicanRouteAnalysis({ token }) {
   const [origin, setOrigin] = useState('')
   const [destination, setDestination] = useState('')
@@ -180,7 +184,7 @@ function MexicanRouteAnalysis({ token }) {
   const [indicationsLoading, setIndicationsLoading] = useState(false)
   const [visibleLayers, setVisibleLayers] = useState(DEFAULT_VISIBLE_LAYERS)
 
-  // ── Layer toggle ───────────────────────────────────────────────────────────
+  // ── Layer toggle ────────────────────────────────────────────────────────────
   const handleToggleLayer = (type) => {
     setVisibleLayers(prev => {
       const next = new Set(prev)
@@ -190,7 +194,7 @@ function MexicanRouteAnalysis({ token }) {
     })
   }
 
-  // ── Autocomplete helpers ───────────────────────────────────────────────────
+  // ── Autocomplete helpers ────────────────────────────────────────────────────
   const fetchSuggestions = async (text) => {
     if (!text || text.length < 3) return []
     try {
@@ -226,6 +230,12 @@ function MexicanRouteAnalysis({ token }) {
         data,
         { headers },
       )
+
+      // Backend returns matched_references — objects the backend actually found
+      // within 25 km of the route.  Fall back to the client-side filtered list
+      // when talking to an older backend that doesn't include this field yet.
+      const matchedRefs = response.data.matched_references ?? data.references ?? []
+
       setTramos(response.data.tramos)
       setSummary({
         total_tramos: response.data.total_tramos,
@@ -233,8 +243,10 @@ function MexicanRouteAnalysis({ token }) {
       })
       setParsedInput({
         coordinates: data.coordinates || [],
-        references: data.references || [],
+        references: matchedRefs,
       })
+      // Update the reference count badge to reflect what the backend matched.
+      setRoutePreview(prev => prev ? { ...prev, refs: matchedRefs.length } : prev)
     } catch (err) {
       const errData = err.response?.data
       if (errData && typeof errData === 'object') {
@@ -250,7 +262,7 @@ function MexicanRouteAnalysis({ token }) {
     }
   }
 
-  // ── Indication extraction (automatic, non-blocking) ───────────────────────
+  // ── Indication extraction (automatic, non-blocking) ─────────────────────
   const startIndicationExtraction = async (routeCoords) => {
     setIndicationsLoading(true)
     setIndications([])
@@ -300,15 +312,18 @@ function MexicanRouteAnalysis({ token }) {
       // Downsample for backend analysis (reduces payload size)
       const sampled = downsample(allPoints, 35)
 
-      // Filter references against the FULL dense route so that points between
-      // sample boundaries are not missed (previous bug: used sampled, 20 km).
-      const refs = filterNearbyRefs(allPoints, 10)
+      // Pre-filter with 25 km radius using the full dense route for the initial
+      // map render (before the backend responds).  The backend re-runs its own
+      // distance check and returns matched_references as the authoritative list.
+      const previewRefs = filterNearbyRefs(allPoints, 25)
 
       const label = allCities.join(' → ')
-      const newRouteData = { coordinates: sampled, references: refs }
+      // Payload sent to backend includes ALL MEXICAN_REFERENCES so the backend
+      // can apply its own distance filter and return matched_references.
+      const newRouteData = { coordinates: sampled, references: MEXICAN_REFERENCES }
 
       setRouteData(newRouteData)
-      setRoutePreview({ label, km: distanceKm, points: sampled.length, refs: refs.length })
+      setRoutePreview({ label, km: distanceKm, points: sampled.length, refs: previewRefs.length })
       setRouteReady(true)
 
       // Fire both in parallel — each updates state independently when done
@@ -324,7 +339,7 @@ function MexicanRouteAnalysis({ token }) {
   // ── Manual re-analysis (e.g. after auto-analysis fails) ────────────────────
   const handleAnalyze = async () => {
     if (!routeData) {
-      setError('Primero usa “Obtener Ruta” para cargar una ruta.')
+      setError('Primero usa "Obtener Ruta" para cargar una ruta.')
       return
     }
     await runAnalysis(routeData)
@@ -368,7 +383,7 @@ function MexicanRouteAnalysis({ token }) {
     }
   }
 
-  // ── Stop management ────────────────────────────────────────────────────────
+  // ── Stop management ────────────────────────────────────────────────────────────
   const addStop = () => {
     setStops(s => [...s, ''])
     setStopSuggs(s => [...s, []])
@@ -386,7 +401,7 @@ function MexicanRouteAnalysis({ token }) {
     setStopSuggs(prev => { const n = [...prev]; n[idx] = suggs; return n })
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="app">
       <div className="container">
@@ -569,14 +584,15 @@ function MexicanRouteAnalysis({ token }) {
         </div>
       )}
 
-      {/* Map appears immediately on route load; tramo colouring added after analysis */}
+      {/* Map appears immediately on route load; reference markers update after
+          analysis when parsedInput.references (backend-matched) is available */}
       {routeReady && routeData && (
         <div className="container">
           <h2>Mapa de Ruta</h2>
           <RouteAnalysisMap
             tramos={tramos}
             coordinates={parsedInput?.coordinates ?? routeData.coordinates}
-            references={parsedInput?.references ?? routeData.references}
+            references={parsedInput?.references ?? []}
             indications={indications}
             visibleLayers={visibleLayers}
             onToggleLayer={handleToggleLayer}
