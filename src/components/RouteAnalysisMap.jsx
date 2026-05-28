@@ -1,11 +1,10 @@
 import { MapContainer, TileLayer, Marker, Popup, Polyline, LayerGroup, useMap } from 'react-leaflet'
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import MapLayerControls from './MapLayerControls'
 import { INDICATION_TYPES, countByType } from '../services/indicationService'
 
-// ── Trazo colours ─────────────────────────────────────────────────────────────
 const TRAZO_COLOR = {
   'Recta':             '#3b82f6',
   'Recta Ascendente':  '#22c55e',
@@ -14,12 +13,10 @@ const TRAZO_COLOR = {
   'Curva Descendente': '#f97316',
 }
 
-// ── Static reference-point colours / letters ──────────────────────────────────
 const REF_COLOR  = { caseta: '#ef4444', paradero: '#0ea5e9', gasolinera: '#f97316', rampa: '#8b5cf6' }
 const REF_LETTER = { caseta: 'C',       paradero: 'P',       gasolinera: 'G',       rampa: 'R' }
 const REF_LABEL  = { caseta: 'Caseta',  paradero: 'Paradero', gasolinera: 'Gasolinera', rampa: 'Rampa' }
 
-// ── Icon factories ────────────────────────────────────────────────────────────
 const createNumberIcon = (num) =>
   L.divIcon({
     className: '',
@@ -47,8 +44,6 @@ const createRefIcon = (type) => {
   })
 }
 
-// Indication icons are intentionally smaller (14 px) than route markers so
-// they don't hide road geometry.  Semi-transparency keeps roads legible.
 const createIndicationIcon = (type) => {
   const meta = INDICATION_TYPES[type] || { icon: '?', color: '#6b7280' }
   return L.divIcon({
@@ -68,16 +63,39 @@ const createIndicationIcon = (type) => {
   })
 }
 
-// ── Auto-fit bounds helper ────────────────────────────────────────────────────
+// Returns the [lat, lon] of the nearest point in routePoints to (refLat, refLon).
+// Used to snap reference markers (casetas, paraderos, etc.) onto the road line
+// rather than displaying them at their static coordinates which may be slightly
+// offset from the ORS-routed path.
+function snapToRoute(refLat, refLon, routePoints) {
+  if (!routePoints?.length) return [refLat, refLon]
+  let minSq = Infinity
+  let bestLat = refLat
+  let bestLon = refLon
+  for (const p of routePoints) {
+    const dlat = refLat - p.lat
+    const dlon = refLon - p.lon
+    const sq = dlat * dlat + dlon * dlon
+    if (sq < minSq) {
+      minSq = sq
+      bestLat = p.lat
+      bestLon = p.lon
+    }
+  }
+  return [bestLat, bestLon]
+}
+
 function FitBounds({ positions }) {
   const map = useMap()
+  // Stable positions reference (memoised in parent) — effect only fires on mount
+  // or when the route genuinely changes, preventing the re-fit loop that occurred
+  // when every render created a new array reference.
   useEffect(() => {
     if (positions?.length > 1) map.fitBounds(positions, { padding: [40, 40] })
   }, [map, positions])
   return null
 }
 
-// ── Map each tramo back to its slice of the input coordinates ─────────────────
 function buildTramoPositions(tramos, coordinates) {
   const EPS = 1e-5
   const idx = (pos) =>
@@ -98,24 +116,36 @@ function buildTramoPositions(tramos, coordinates) {
   })
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
 function RouteAnalysisMap({
   tramos,
   coordinates,
   references,
+  densePoints,
   indications,
   visibleLayers,
   onToggleLayer,
   indicationsLoading,
 }) {
+  // useMemo BEFORE the early return — rules of hooks require unconditional calls.
+  // Memoising allPositions means FitBounds sees a stable reference and its
+  // useEffect only fires when the coordinate array itself changes (new route),
+  // not on every parent re-render.
+  const allPositions = useMemo(
+    () => (coordinates || []).map((c) => [c.lat, c.lon]),
+    [coordinates],
+  )
+
   if (!coordinates?.length) return null
 
-  const allPositions   = coordinates.map((c) => [c.lat, c.lon])
   const tramoPositions = tramos?.length ? buildTramoPositions(tramos, coordinates) : []
-  const inputRefs      = (references || []).filter((r) => REF_COLOR[r.type])
+
+  // Only render refs with a known type and valid finite coordinates
+  const inputRefs = (references || []).filter(
+    (r) => r && REF_COLOR[r.type] && isFinite(r.lat) && isFinite(r.lon)
+  )
+
   const indicationCounts = countByType(indications)
 
-  // Group auto-extracted indications by type for per-LayerGroup rendering
   const indicationsByType = (indications || []).reduce((acc, ind) => {
     if (!acc[ind.type]) acc[ind.type] = []
     acc[ind.type].push(ind)
@@ -127,10 +157,6 @@ function RouteAnalysisMap({
 
   return (
     <>
-      {/*
-        Wrapper is position:relative so the floating layer-control panel can
-        be position:absolute over the map without being a Leaflet child.
-      */}
       <div style={{ position: 'relative' }}>
         <MapContainer
           center={[23.6345, -102.5528]}
@@ -143,10 +169,10 @@ function RouteAnalysisMap({
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           />
 
-          {/* Full-route grey polyline — always visible, sits below coloured layers */}
+          {/* Full-route grey polyline */}
           <Polyline positions={allPositions} color="#9ca3af" weight={2} opacity={0.45} />
 
-          {/* Coloured per-tramo polylines (rendered only after analysis completes) */}
+          {/* Coloured per-tramo polylines */}
           {tramos?.map((tramo, i) => (
             <Polyline
               key={tramo.numero}
@@ -176,52 +202,52 @@ function RouteAnalysisMap({
             </Marker>
           ))}
 
-          {/* Static reference markers (casetas, paraderos, gasolineras, rampas) */}
-          {inputRefs.map((ref, i) => (
-            <Marker
-              key={`ref-${i}`}
-              position={[ref.lat, ref.lon]}
-              icon={createRefIcon(ref.type)}
-            >
-              <Popup>
-                <strong>{ref.name}</strong><br />
-                <span style={{ textTransform: 'capitalize' }}>{REF_LABEL[ref.type]}</span>
-              </Popup>
-            </Marker>
-          ))}
+          {/* Reference markers — snapped to the nearest dense-route point so
+              casetas, paraderos, gasolineras and rampas sit exactly on the road */}
+          {inputRefs.map((ref, i) => {
+            const [lat, lon] = snapToRoute(ref.lat, ref.lon, densePoints)
+            return (
+              <Marker
+                key={`ref-${i}`}
+                position={[lat, lon]}
+                icon={createRefIcon(ref.type)}
+              >
+                <Popup>
+                  <strong>{ref.name}</strong><br />
+                  <span style={{ textTransform: 'capitalize' }}>{REF_LABEL[ref.type]}</span>
+                </Popup>
+              </Marker>
+            )
+          })}
 
-          {/*
-            Auto-extracted indication layers.
-            Each type lives in its own LayerGroup so toggling visibility
-            is a pure React render without redrawing the base map or other layers.
-          */}
+          {/* Auto-extracted indication layers, one LayerGroup per type */}
           {Object.entries(indicationsByType).map(([type, items]) =>
             visibleLayers?.has(type) ? (
               <LayerGroup key={type}>
-                {items.map((ind, i) => (
-                  <Marker
-                    key={`ind-${type}-${i}`}
-                    position={[ind.lat, ind.lon]}
-                    icon={createIndicationIcon(type)}
-                  >
-                    <Popup>
-                      <strong>{ind.label}</strong><br />
-                      <span style={{ fontSize: '11px', color: '#6b7280' }}>
-                        {INDICATION_TYPES[type]?.label}
-                      </span>
-                      {ind.metadata?.maxspeed && (
-                        <><br /><span>Límite: {ind.metadata.maxspeed} km/h</span></>
-                      )}
-                    </Popup>
-                  </Marker>
-                ))}
+                {items
+                  .filter((ind) => isFinite(ind.lat) && isFinite(ind.lon))
+                  .map((ind, i) => (
+                    <Marker
+                      key={`ind-${type}-${i}`}
+                      position={[ind.lat, ind.lon]}
+                      icon={createIndicationIcon(type)}
+                    >
+                      <Popup>
+                        <strong>{ind.label}</strong><br />
+                        <span style={{ fontSize: '11px', color: '#6b7280' }}>
+                          {INDICATION_TYPES[type]?.label}
+                        </span>
+                        {ind.metadata?.maxspeed && (
+                          <><br /><span>Límite: {ind.metadata.maxspeed} km/h</span></>
+                        )}
+                      </Popup>
+                    </Marker>
+                  ))}
               </LayerGroup>
             ) : null
           )}
         </MapContainer>
 
-        {/* Layer-control panel — positioned over the map, outside MapContainer
-            so it does not interfere with Leaflet's internal event handling */}
         {showLayerPanel && (
           <div style={{
             position: 'absolute',
@@ -240,7 +266,6 @@ function RouteAnalysisMap({
         )}
       </div>
 
-      {/* Trazo legend */}
       <div className="map-legend">
         {Object.entries(TRAZO_COLOR).map(([label, color]) => (
           <div key={label} className="legend-item">
