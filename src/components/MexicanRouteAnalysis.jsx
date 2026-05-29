@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import axios from 'axios'
 import RouteAnalysisMap from './RouteAnalysisMap'
 import RiskAnalysisPanel from './RiskAnalysisPanel'
@@ -7,9 +7,6 @@ import { fetchIndications, DEFAULT_VISIBLE_LAYERS } from '../services/indication
 const API_BASE = `${import.meta.env.VITE_API_URL ?? 'https://eld-backend-one.vercel.app'}/api`
 const ORS_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjMxZDk5OTJjNGM5MDRkMWE5M2ExYzhjZGU0OTljZDhmIiwiaCI6Im11cm11cjY0In0='
 
-// Known reference points along major Mexican federal highways.
-// Sent to the backend which filters by proximity; backend returns matched_references
-// which are then snapped to the dense ORS route for accurate map placement.
 const MEXICAN_REFERENCES = [
   { lat: 27.160, lon: -99.520,  type: 'caseta',    name: 'Caseta Colombia Solidaridad' },
   { lat: 26.490, lon: -100.200, type: 'caseta',    name: 'Caseta Sabinas Hidalgo' },
@@ -56,6 +53,14 @@ const TRAZO_STYLE = {
   'Recta Descendente':  { bg: '#fffbeb', color: '#b45309' },
   'Curva Ascendente':   { bg: '#dcfce7', color: '#166534' },
   'Curva Descendente':  { bg: '#fff7ed', color: '#c2410c' },
+}
+
+const REF_LABEL = { caseta: 'Caseta', paradero: 'Paradero', gasolinera: 'Gasolinera', rampa: 'Rampa' }
+const REF_BADGE = {
+  caseta:     { bg: '#fee2e2', color: '#b91c1c' },
+  paradero:   { bg: '#e0f2fe', color: '#0369a1' },
+  gasolinera: { bg: '#fff7ed', color: '#c2410c' },
+  rampa:      { bg: '#f3e8ff', color: '#7e22ce' },
 }
 
 function TrazoBadge({ trazo }) {
@@ -165,7 +170,6 @@ function MexicanRouteAnalysis({ token }) {
   const [routeReady, setRouteReady] = useState(false)
   const [routePreview, setRoutePreview] = useState(null)
   const [routeData, setRouteData] = useState(null)
-  // Full-density ORS polyline — used to snap reference markers onto the road
   const [densePoints, setDensePoints] = useState(null)
 
   const [tramos, setTramos] = useState(null)
@@ -179,8 +183,36 @@ function MexicanRouteAnalysis({ token }) {
   const [indicationsLoading, setIndicationsLoading] = useState(false)
   const [visibleLayers, setVisibleLayers] = useState(DEFAULT_VISIBLE_LAYERS)
 
-  // All three phases must finish before map/table are shown
   const fullyLoaded = routeReady && !!tramos && !loading && !indicationsLoading
+
+  // Km-by-km route log: place each matched reference at its exact km position
+  // along the dense ORS polyline, sorted from origin to destination.
+  const bitacora = useMemo(() => {
+    if (!densePoints?.length || !parsedInput?.references?.length) return []
+
+    const cumKm = [0]
+    for (let i = 1; i < densePoints.length; i++) {
+      const p = densePoints[i], q = densePoints[i - 1]
+      const dlat = (p.lat - q.lat) * 111
+      const dlon = (p.lon - q.lon) * 111 * Math.cos(q.lat * Math.PI / 180)
+      cumKm.push(cumKm[i - 1] + Math.sqrt(dlat * dlat + dlon * dlon))
+    }
+
+    const findPos = (lat, lon) => {
+      let minSq = Infinity, best = 0
+      for (let i = 0; i < densePoints.length; i++) {
+        const p = densePoints[i]
+        const sq = (lat - p.lat) ** 2 + (lon - p.lon) ** 2
+        if (sq < minSq) { minSq = sq; best = i }
+      }
+      return { km: Math.round(cumKm[best]), elev: densePoints[best].elevation ?? 0 }
+    }
+
+    return parsedInput.references
+      .filter(r => isFinite(r.lat) && isFinite(r.lon))
+      .map(ref => ({ ...findPos(ref.lat, ref.lon), type: ref.type, name: ref.name }))
+      .sort((a, b) => a.km - b.km)
+  }, [densePoints, parsedInput])
 
   const handleToggleLayer = (type) => {
     setVisibleLayers(prev => {
@@ -226,8 +258,6 @@ function MexicanRouteAnalysis({ token }) {
         { headers },
       )
 
-      // matched_references are the objects the backend actually found within
-      // 25 km of the route. Fall back to client-filtered list for older backends.
       const matchedRefs = response.data.matched_references ?? data.references ?? []
 
       setTramos(response.data.tramos)
@@ -262,7 +292,7 @@ function MexicanRouteAnalysis({ token }) {
       const result = await fetchIndications(routeCoords, API_BASE, token)
       setIndications(result)
     } catch {
-      // Non-critical — map and analysis still work without indications
+      // Non-critical
     } finally {
       setIndicationsLoading(false)
     }
@@ -307,12 +337,11 @@ function MexicanRouteAnalysis({ token }) {
       const label = allCities.join(' → ')
       const newRouteData = { coordinates: sampled, references: MEXICAN_REFERENCES }
 
-      setDensePoints(allPoints)   // store full-density route for snap-to-road
+      setDensePoints(allPoints)
       setRouteData(newRouteData)
       setRoutePreview({ label, km: distanceKm, points: sampled.length, refs: previewRefs.length })
       setRouteReady(true)
 
-      // Fire both in parallel — state updates independently when each finishes
       startIndicationExtraction(sampled)
       runAnalysis(newRouteData)
     } catch (err) {
@@ -477,7 +506,6 @@ function MexicanRouteAnalysis({ token }) {
           </button>
         </div>
 
-        {/* Progress badges — always visible once route is requested */}
         {routeReady && (
           <div style={{ marginTop: '14px', display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
             {routePreview && (
@@ -516,7 +544,6 @@ function MexicanRouteAnalysis({ token }) {
           </div>
         )}
 
-        {/* Action buttons */}
         <div style={{ marginTop: '20px', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
           <button type="button" onClick={handleAnalyze} disabled={loading || pdfLoading || !routeData}>
             {loading ? 'Analizando…' : 'Analizar Ruta'}
@@ -550,12 +577,9 @@ function MexicanRouteAnalysis({ token }) {
 
       {error && <div className="error">{error}</div>}
 
-      {/* Loading banner — visible while any of the three phases is still running */}
       {routeReady && !fullyLoaded && !error && (
         <div className="container" style={{ textAlign: 'center', padding: '36px 24px' }}>
-          <div style={{
-            display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '10px',
-          }}>
+          <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
             <div style={{
               display: 'inline-flex', alignItems: 'center', gap: '10px',
               background: '#f5f3ff', color: '#6d28d9',
@@ -581,7 +605,6 @@ function MexicanRouteAnalysis({ token }) {
         </div>
       )}
 
-      {/* Everything below appears only once ALL data is ready */}
       {fullyLoaded && (
         <>
           {summary && (
@@ -660,6 +683,53 @@ function MexicanRouteAnalysis({ token }) {
                         )}
                       </>
                     ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {bitacora.length > 0 && (
+            <div className="container">
+              <h2>Bitácora de Ruta</h2>
+              <p style={{ fontSize: '13px', color: '#6b7280', marginTop: 0, marginBottom: '12px' }}>
+                Referencias ordenadas por km desde el origen — casetas, paraderos, gasolineras y rampas
+                encontradas a lo largo del recorrido con su elevación aproximada.
+              </p>
+              <div className="eld-log">
+                <table className="log-table tramo-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: '80px' }}>Km</th>
+                      <th style={{ width: '120px' }}>Tipo</th>
+                      <th>Referencia</th>
+                      <th style={{ width: '90px', textAlign: 'right' }}>Altitud</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bitacora.map((item, i) => {
+                      const s = REF_BADGE[item.type] || { bg: '#f3f4f6', color: '#374151' }
+                      return (
+                        <tr key={i}>
+                          <td style={{ fontWeight: 700, color: '#374151', fontFamily: 'monospace', fontSize: '13px' }}>
+                            km {item.km}
+                          </td>
+                          <td>
+                            <span style={{
+                              background: s.bg, color: s.color,
+                              padding: '2px 9px', borderRadius: '99px',
+                              fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+                            }}>
+                              {REF_LABEL[item.type] || item.type}
+                            </span>
+                          </td>
+                          <td style={{ fontSize: '13px' }}>{item.name}</td>
+                          <td style={{ color: '#6b7280', fontSize: '12px', textAlign: 'right' }}>
+                            {item.elev} m
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
