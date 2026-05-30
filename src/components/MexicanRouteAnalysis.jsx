@@ -335,7 +335,7 @@ function MexicanRouteAnalysis({ token }) {
       const previewRefs = filterNearbyRefs(allPoints, 25)
 
       const label = allCities.join(' → ')
-      const newRouteData = { coordinates: sampled, references: MEXICAN_REFERENCES }
+      const newRouteData = { coordinates: sampled, references: previewRefs }
 
       setDensePoints(allPoints)
       setRouteData(newRouteData)
