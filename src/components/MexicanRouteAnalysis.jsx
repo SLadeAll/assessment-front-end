@@ -3,7 +3,7 @@ import axios from 'axios'
 import RouteAnalysisMap from './RouteAnalysisMap'
 import RiskAnalysisPanel from './RiskAnalysisPanel'
 import { fetchIndications, DEFAULT_VISIBLE_LAYERS } from '../services/indicationService'
-import { FALLBACK_REFERENCES } from '../data/routeReferences'
+import { FALLBACK_REFERENCES, PREDEFINED_ROUTES } from '../data/routeReferences'
 
 const API_BASE = `${import.meta.env.VITE_API_URL ?? 'https://eld-backend-one.vercel.app'}/api`
 const ORS_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjMxZDk5OTJjNGM5MDRkMWE5M2ExYzhjZGU0OTljZDhmIiwiaCI6Im11cm11cjY0In0='
@@ -369,6 +369,19 @@ function MexicanRouteAnalysis({ token }) {
     }
   }
 
+  const applyPredefined = (route) => {
+    setOrigin(route.origin)
+    setDestination(route.destination)
+    setStops(route.stops)
+    setStopSuggs(route.stops.map(() => []))
+    setRouteReady(false)
+    setRoutePreview(null)
+    setTramos(null)
+    setSummary(null)
+    setParsedInput(null)
+    setIndications([])
+  }
+
   const addStop = () => {
     setStops(s => [...s, ''])
     setStopSuggs(s => [...s, []])
@@ -395,6 +408,33 @@ function MexicanRouteAnalysis({ token }) {
           extraerá automáticamente las indicaciones viales y generará el desglose
           completo de tramos, topografía y tabla PROCESO.
         </p>
+
+        <div style={{ marginBottom: '18px' }}>
+          <p style={{ fontSize: '12px', fontWeight: 600, color: '#6b7280', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Rutas frecuentes — clic para autocompletar
+          </p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+            {PREDEFINED_ROUTES.map((route, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => applyPredefined(route)}
+                title={route.description}
+                style={{
+                  background: '#f5f3ff', color: '#5b21b6',
+                  border: '1px solid #ddd6fe', borderRadius: '6px',
+                  padding: '5px 11px', fontSize: '12px', fontWeight: 600,
+                  cursor: 'pointer', whiteSpace: 'nowrap',
+                  transition: 'background 0.15s',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = '#ede9fe' }}
+                onMouseLeave={e => { e.currentTarget.style.background = '#f5f3ff' }}
+              >
+                {route.label}
+              </button>
+            ))}
+          </div>
+        </div>
 
         <CityInput
           id="origin" label="Origen"
