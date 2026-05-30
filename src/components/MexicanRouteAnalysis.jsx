@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import axios from 'axios'
 import RouteAnalysisMap from './RouteAnalysisMap'
 import RiskAnalysisPanel from './RiskAnalysisPanel'
@@ -7,45 +7,6 @@ import { fetchIndications, DEFAULT_VISIBLE_LAYERS } from '../services/indication
 const API_BASE = `${import.meta.env.VITE_API_URL ?? 'https://eld-backend-one.vercel.app'}/api`
 const ORS_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjMxZDk5OTJjNGM5MDRkMWE5M2ExYzhjZGU0OTljZDhmIiwiaCI6Im11cm11cjY0In0='
 
-const MEXICAN_REFERENCES = [
-  { lat: 27.160, lon: -99.520,  type: 'caseta',    name: 'Caseta Colombia Solidaridad' },
-  { lat: 26.490, lon: -100.200, type: 'caseta',    name: 'Caseta Sabinas Hidalgo' },
-  { lat: 25.700, lon: -100.370, type: 'caseta',    name: 'Caseta Monterrey Norte' },
-  { lat: 25.490, lon: -100.870, type: 'caseta',    name: 'Caseta Saltillo Oriente' },
-  { lat: 23.650, lon: -100.630, type: 'caseta',    name: 'Caseta Matehuala' },
-  { lat: 22.210, lon: -100.970, type: 'caseta',    name: 'Caseta San Luis Potosí Sur' },
-  { lat: 20.720, lon: -100.405, type: 'caseta',    name: 'Caseta Querétaro Palmillas' },
-  { lat: 21.040, lon: -101.415, type: 'caseta',    name: 'Caseta El Gallo' },
-  { lat: 20.672, lon: -103.285, type: 'caseta',    name: 'Caseta Guadalajara Tonalá' },
-  { lat: 27.090, lon: -99.528,  type: 'paradero',  name: 'Paradero Vallecillo' },
-  { lat: 26.260, lon: -100.248, type: 'paradero',  name: 'Paradero Mamulique' },
-  { lat: 25.920, lon: -100.271, type: 'paradero',  name: 'Paradero Escobedo' },
-  { lat: 25.200, lon: -101.095, type: 'paradero',  name: 'Paradero Arteaga' },
-  { lat: 24.820, lon: -101.050, type: 'paradero',  name: 'Paradero Carneros' },
-  { lat: 24.100, lon: -100.890, type: 'paradero',  name: 'Paradero Cedral' },
-  { lat: 22.900, lon: -100.715, type: 'paradero',  name: 'Paradero Villa de Reyes' },
-  { lat: 21.650, lon: -100.750, type: 'paradero',  name: 'Paradero San Felipe' },
-  { lat: 21.365, lon: -101.925, type: 'paradero',  name: 'Paradero Lagos de Moreno' },
-  { lat: 20.900, lon: -102.400, type: 'paradero',  name: 'Paradero Tepatitlán Norte' },
-  { lat: 27.200, lon: -99.514,  type: 'gasolinera', name: 'Pemex Nuevo Laredo Sur' },
-  { lat: 26.700, lon: -99.810,  type: 'gasolinera', name: 'Pemex Anáhuac' },
-  { lat: 26.050, lon: -100.270, type: 'gasolinera', name: 'Pemex Ciénega de Flores' },
-  { lat: 25.540, lon: -100.330, type: 'gasolinera', name: 'Pemex Monterrey Tecnológico' },
-  { lat: 25.350, lon: -101.050, type: 'gasolinera', name: 'Pemex Saltillo Oriente' },
-  { lat: 24.600, lon: -100.985, type: 'gasolinera', name: 'Pemex General Cepeda' },
-  { lat: 23.400, lon: -100.680, type: 'gasolinera', name: 'Pemex Charcas' },
-  { lat: 22.400, lon: -100.930, type: 'gasolinera', name: 'Pemex Soledad de G.S.' },
-  { lat: 21.500, lon: -100.612, type: 'gasolinera', name: 'Pemex San Juan del Río' },
-  { lat: 20.980, lon: -101.380, type: 'gasolinera', name: 'Pemex San Diego de la Unión' },
-  { lat: 21.280, lon: -102.100, type: 'gasolinera', name: 'Pemex Encarnación de Díaz' },
-  { lat: 20.740, lon: -103.080, type: 'gasolinera', name: 'Pemex Tlaquepaque' },
-  { lat: 26.200, lon: -100.252, type: 'rampa',      name: 'Rampa Paso Mamulique Km 165' },
-  { lat: 25.565, lon: -100.605, type: 'rampa',      name: 'Rampa Cumbres Monterrey Km 286' },
-  { lat: 25.515, lon: -100.755, type: 'rampa',      name: 'Rampa Cumbres Monterrey Km 301' },
-  { lat: 25.475, lon: -100.840, type: 'rampa',      name: 'Rampa Cumbres Monterrey Km 312' },
-  { lat: 21.180, lon: -102.280, type: 'rampa',      name: 'Rampa Los Altos de Jalisco Km 1118' },
-  { lat: 20.850, lon: -102.700, type: 'rampa',      name: 'Rampa Tepatitlán Km 1152' },
-]
 
 const TRAZO_STYLE = {
   'Recta':              { bg: '#eff6ff', color: '#1d4ed8' },
@@ -91,8 +52,8 @@ function CoordCell({ pos }) {
   return <span className="coord-cell">{toDMS(pos.lat, pos.lon)}</span>
 }
 
-function filterNearbyRefs(routeCoords, maxKm = 25) {
-  return MEXICAN_REFERENCES.filter(ref =>
+function filterNearbyRefs(routeCoords, maxKm = 25, refs = []) {
+  return refs.filter(ref =>
     routeCoords.some(c => {
       const dlat = (ref.lat - c.lat) * 111
       const dlon = (ref.lon - c.lon) * 111 * Math.cos(c.lat * Math.PI / 180)
@@ -182,6 +143,16 @@ function MexicanRouteAnalysis({ token }) {
   const [indications, setIndications] = useState([])
   const [indicationsLoading, setIndicationsLoading] = useState(false)
   const [visibleLayers, setVisibleLayers] = useState(DEFAULT_VISIBLE_LAYERS)
+
+  const [allReferences, setAllReferences] = useState([])
+  const [refsLoading, setRefsLoading] = useState(true)
+
+  useEffect(() => {
+    axios.get(`${API_BASE}/route-analysis/references/`)
+      .then(r => setAllReferences(r.data.references || []))
+      .catch(() => {})
+      .finally(() => setRefsLoading(false))
+  }, [])
 
   const fullyLoaded = routeReady && !!tramos && !loading && !indicationsLoading
 
@@ -332,7 +303,7 @@ function MexicanRouteAnalysis({ token }) {
       }))
 
       const sampled = downsample(allPoints, 35)
-      const previewRefs = filterNearbyRefs(allPoints, 25)
+      const previewRefs = filterNearbyRefs(allPoints, 25, allReferences)
 
       const label = allCities.join(' → ')
       const newRouteData = { coordinates: sampled, references: previewRefs }
@@ -485,15 +456,15 @@ function MexicanRouteAnalysis({ token }) {
           onClearSuggestions={() => setDestSuggs([])}
         />
 
-        <div style={{ marginTop: '16px' }}>
+        <div style={{ marginTop: '16px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
           <button
             type="button" onClick={handleGetRoute}
-            disabled={routeLoading}
+            disabled={routeLoading || refsLoading}
             style={{
-              background: routeLoading ? '#9ca3af' : '#2563eb',
+              background: (routeLoading || refsLoading) ? '#9ca3af' : '#2563eb',
               color: '#fff', border: 'none', borderRadius: '6px',
               padding: '9px 22px', fontWeight: 700, fontSize: '14px',
-              cursor: routeLoading ? 'not-allowed' : 'pointer',
+              cursor: (routeLoading || refsLoading) ? 'not-allowed' : 'pointer',
               display: 'flex', alignItems: 'center', gap: '8px',
             }}
           >
@@ -504,6 +475,11 @@ function MexicanRouteAnalysis({ token }) {
             </svg>
             {routeLoading ? 'Obteniendo ruta…' : 'Obtener Ruta'}
           </button>
+          {refsLoading && (
+            <span style={{ fontSize: '12px', color: '#6b7280', background: '#f3f4f6', padding: '3px 10px', borderRadius: '99px' }}>
+              ⧗ Cargando referencias…
+            </span>
+          )}
         </div>
 
         {routeReady && (

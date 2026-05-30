@@ -43,7 +43,7 @@ export async function fetchIndications(coordinates, apiBase, token) {
   }
 
   const data = await response.json()
-  return data.indications || []
+  return (data.indications || []).filter(ind => ind.type !== 'traffic_light')
 }
 
 /**
