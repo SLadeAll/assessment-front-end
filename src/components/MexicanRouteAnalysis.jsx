@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import axios from 'axios'
 import RouteAnalysisMap from './RouteAnalysisMap'
 import RiskAnalysisPanel from './RiskAnalysisPanel'
@@ -7,10 +7,6 @@ import { fetchIndications, DEFAULT_VISIBLE_LAYERS } from '../services/indication
 const API_BASE = `${import.meta.env.VITE_API_URL ?? 'https://eld-backend-one.vercel.app'}/api`
 const ORS_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjMxZDk5OTJjNGM5MDRkMWE5M2ExYzhjZGU0OTljZDhmIiwiaCI6Im11cm11cjY0In0='
 
-// Known reference points along major Mexican federal highways (static database).
-// These are sent to the backend which filters them by proximity to the actual
-// route (MAX_REF_DISTANCE_M = 25 km); the backend returns matched_references
-// which the frontend uses for map markers.
 const MEXICAN_REFERENCES = [
   { lat: 27.160, lon: -99.520,  type: 'caseta',    name: 'Caseta Colombia Solidaridad' },
   { lat: 26.490, lon: -100.200, type: 'caseta',    name: 'Caseta Sabinas Hidalgo' },
@@ -59,6 +55,14 @@ const TRAZO_STYLE = {
   'Curva Descendente':  { bg: '#fff7ed', color: '#c2410c' },
 }
 
+const REF_LABEL = { caseta: 'Caseta', paradero: 'Paradero', gasolinera: 'Gasolinera', rampa: 'Rampa' }
+const REF_BADGE = {
+  caseta:     { bg: '#fee2e2', color: '#b91c1c' },
+  paradero:   { bg: '#e0f2fe', color: '#0369a1' },
+  gasolinera: { bg: '#fff7ed', color: '#c2410c' },
+  rampa:      { bg: '#f3e8ff', color: '#7e22ce' },
+}
+
 function TrazoBadge({ trazo }) {
   const s = TRAZO_STYLE[trazo] || { bg: '#f3f4f6', color: '#374151' }
   return (
@@ -87,10 +91,6 @@ function CoordCell({ pos }) {
   return <span className="coord-cell">{toDMS(pos.lat, pos.lon)}</span>
 }
 
-// Pre-filter MEXICAN_REFERENCES to those within maxKm of any dense route point.
-// Used only for the initial map render (before the backend responds); the backend
-// performs its own haversine check and returns matched_references which becomes
-// the authoritative source after analysis completes.
 function filterNearbyRefs(routeCoords, maxKm = 25) {
   return MEXICAN_REFERENCES.filter(ref =>
     routeCoords.some(c => {
@@ -118,7 +118,6 @@ function downsample(coords, targetKm = 35) {
   return result
 }
 
-// ── Autocomplete input ──────────────────────────────────────────────────────
 function CityInput({ id, label, placeholder, value, onChange, suggestions, onSelect, onClearSuggestions }) {
   return (
     <div className="form-field" style={{ position: 'relative' }}>
@@ -160,7 +159,6 @@ function CityInput({ id, label, placeholder, value, onChange, suggestions, onSel
   )
 }
 
-// ── Main component ─────────────────────────────────────────────────────────────
 function MexicanRouteAnalysis({ token }) {
   const [origin, setOrigin] = useState('')
   const [destination, setDestination] = useState('')
@@ -172,6 +170,7 @@ function MexicanRouteAnalysis({ token }) {
   const [routeReady, setRouteReady] = useState(false)
   const [routePreview, setRoutePreview] = useState(null)
   const [routeData, setRouteData] = useState(null)
+  const [densePoints, setDensePoints] = useState(null)
 
   const [tramos, setTramos] = useState(null)
   const [summary, setSummary] = useState(null)
@@ -184,7 +183,37 @@ function MexicanRouteAnalysis({ token }) {
   const [indicationsLoading, setIndicationsLoading] = useState(false)
   const [visibleLayers, setVisibleLayers] = useState(DEFAULT_VISIBLE_LAYERS)
 
-  // ── Layer toggle ────────────────────────────────────────────────────────────
+  const fullyLoaded = routeReady && !!tramos && !loading && !indicationsLoading
+
+  // Km-by-km route log: place each matched reference at its exact km position
+  // along the dense ORS polyline, sorted from origin to destination.
+  const bitacora = useMemo(() => {
+    if (!densePoints?.length || !parsedInput?.references?.length) return []
+
+    const cumKm = [0]
+    for (let i = 1; i < densePoints.length; i++) {
+      const p = densePoints[i], q = densePoints[i - 1]
+      const dlat = (p.lat - q.lat) * 111
+      const dlon = (p.lon - q.lon) * 111 * Math.cos(q.lat * Math.PI / 180)
+      cumKm.push(cumKm[i - 1] + Math.sqrt(dlat * dlat + dlon * dlon))
+    }
+
+    const findPos = (lat, lon) => {
+      let minSq = Infinity, best = 0
+      for (let i = 0; i < densePoints.length; i++) {
+        const p = densePoints[i]
+        const sq = (lat - p.lat) ** 2 + (lon - p.lon) ** 2
+        if (sq < minSq) { minSq = sq; best = i }
+      }
+      return { km: Math.round(cumKm[best]), elev: densePoints[best].elevation ?? 0 }
+    }
+
+    return parsedInput.references
+      .filter(r => isFinite(r.lat) && isFinite(r.lon))
+      .map(ref => ({ ...findPos(ref.lat, ref.lon), type: ref.type, name: ref.name }))
+      .sort((a, b) => a.km - b.km)
+  }, [densePoints, parsedInput])
+
   const handleToggleLayer = (type) => {
     setVisibleLayers(prev => {
       const next = new Set(prev)
@@ -194,7 +223,6 @@ function MexicanRouteAnalysis({ token }) {
     })
   }
 
-  // ── Autocomplete helpers ────────────────────────────────────────────────────
   const fetchSuggestions = async (text) => {
     if (!text || text.length < 3) return []
     try {
@@ -213,7 +241,6 @@ function MexicanRouteAnalysis({ token }) {
     return r.data.features[0].geometry.coordinates
   }
 
-  // ── Route analysis (called automatically on route load and manually via button) ─
   const runAnalysis = async (data) => {
     setLoading(true)
     setError('')
@@ -231,9 +258,6 @@ function MexicanRouteAnalysis({ token }) {
         { headers },
       )
 
-      // Backend returns matched_references — objects the backend actually found
-      // within 25 km of the route.  Fall back to the client-side filtered list
-      // when talking to an older backend that doesn't include this field yet.
       const matchedRefs = response.data.matched_references ?? data.references ?? []
 
       setTramos(response.data.tramos)
@@ -245,7 +269,6 @@ function MexicanRouteAnalysis({ token }) {
         coordinates: data.coordinates || [],
         references: matchedRefs,
       })
-      // Update the reference count badge to reflect what the backend matched.
       setRoutePreview(prev => prev ? { ...prev, refs: matchedRefs.length } : prev)
     } catch (err) {
       const errData = err.response?.data
@@ -262,7 +285,6 @@ function MexicanRouteAnalysis({ token }) {
     }
   }
 
-  // ── Indication extraction (automatic, non-blocking) ─────────────────────
   const startIndicationExtraction = async (routeCoords) => {
     setIndicationsLoading(true)
     setIndications([])
@@ -270,13 +292,12 @@ function MexicanRouteAnalysis({ token }) {
       const result = await fetchIndications(routeCoords, API_BASE, token)
       setIndications(result)
     } catch {
-      // Non-critical — map and analysis still work without indications
+      // Non-critical
     } finally {
       setIndicationsLoading(false)
     }
   }
 
-  // ── Get route from ORS ─────────────────────────────────────────────────────
   const handleGetRoute = async () => {
     if (!origin.trim() || !destination.trim()) {
       setError('Escribe al menos el origen y el destino.')
@@ -287,6 +308,7 @@ function MexicanRouteAnalysis({ token }) {
     setRouteReady(false)
     setRoutePreview(null)
     setRouteData(null)
+    setDensePoints(null)
     setTramos(null)
     setSummary(null)
     setParsedInput(null)
@@ -302,31 +324,24 @@ function MexicanRouteAnalysis({ token }) {
         { headers: { 'Content-Type': 'application/json' } },
       )
       const feature = routeRes.data.features[0]
-      const rawCoords = feature.geometry.coordinates  // [lon, lat, elev] — full dense array
+      const rawCoords = feature.geometry.coordinates
       const distanceKm = Math.round(feature.properties.summary.distance / 1000)
 
       const allPoints = rawCoords.map(([lon, lat, elevation]) => ({
         lat, lon, elevation: Math.round(elevation || 0),
       }))
 
-      // Downsample for backend analysis (reduces payload size)
       const sampled = downsample(allPoints, 35)
-
-      // Pre-filter with 25 km radius using the full dense route for the initial
-      // map render (before the backend responds).  The backend re-runs its own
-      // distance check and returns matched_references as the authoritative list.
       const previewRefs = filterNearbyRefs(allPoints, 25)
 
       const label = allCities.join(' → ')
-      // Payload sent to backend includes ALL MEXICAN_REFERENCES so the backend
-      // can apply its own distance filter and return matched_references.
-      const newRouteData = { coordinates: sampled, references: MEXICAN_REFERENCES }
+      const newRouteData = { coordinates: sampled, references: previewRefs }
 
+      setDensePoints(allPoints)
       setRouteData(newRouteData)
       setRoutePreview({ label, km: distanceKm, points: sampled.length, refs: previewRefs.length })
       setRouteReady(true)
 
-      // Fire both in parallel — each updates state independently when done
       startIndicationExtraction(sampled)
       runAnalysis(newRouteData)
     } catch (err) {
@@ -336,7 +351,6 @@ function MexicanRouteAnalysis({ token }) {
     }
   }
 
-  // ── Manual re-analysis (e.g. after auto-analysis fails) ────────────────────
   const handleAnalyze = async () => {
     if (!routeData) {
       setError('Primero usa "Obtener Ruta" para cargar una ruta.')
@@ -345,7 +359,6 @@ function MexicanRouteAnalysis({ token }) {
     await runAnalysis(routeData)
   }
 
-  // ── Export PDF ─────────────────────────────────────────────────────────────
   const handleExportPdf = async () => {
     if (!routeData) { setError('Primero obtén la ruta antes de exportar.'); return }
 
@@ -383,7 +396,6 @@ function MexicanRouteAnalysis({ token }) {
     }
   }
 
-  // ── Stop management ────────────────────────────────────────────────────────────
   const addStop = () => {
     setStops(s => [...s, ''])
     setStopSuggs(s => [...s, []])
@@ -401,7 +413,6 @@ function MexicanRouteAnalysis({ token }) {
     setStopSuggs(prev => { const n = [...prev]; n[idx] = suggs; return n })
   }
 
-  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="app">
       <div className="container">
@@ -495,8 +506,7 @@ function MexicanRouteAnalysis({ token }) {
           </button>
         </div>
 
-        {/* Live status badges for each processing phase */}
-        {(routeReady || loading || indicationsLoading) && (
+        {routeReady && (
           <div style={{ marginTop: '14px', display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
             {routePreview && (
               <>
@@ -534,7 +544,6 @@ function MexicanRouteAnalysis({ token }) {
           </div>
         )}
 
-        {/* Action buttons */}
         <div style={{ marginTop: '20px', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
           <button type="button" onClick={handleAnalyze} disabled={loading || pdfLoading || !routeData}>
             {loading ? 'Analizando…' : 'Analizar Ruta'}
@@ -568,89 +577,165 @@ function MexicanRouteAnalysis({ token }) {
 
       {error && <div className="error">{error}</div>}
 
-      {summary && (
-        <div className="container">
-          <div className="route-summary">
-            <div className="summary-stat">
-              <span className="summary-value">{summary.total_tramos}</span>
-              <span className="summary-label">Tramos</span>
+      {routeReady && !fullyLoaded && !error && (
+        <div className="container" style={{ textAlign: 'center', padding: '36px 24px' }}>
+          <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: '10px',
+              background: '#f5f3ff', color: '#6d28d9',
+              padding: '12px 24px', borderRadius: '10px',
+              fontSize: '14px', fontWeight: 600,
+            }}>
+              <span style={{ fontSize: '20px' }}>⧗</span>
+              Procesando información completa de la ruta…
             </div>
-            <div className="summary-divider" />
-            <div className="summary-stat">
-              <span className="summary-value">{summary.distancia_total_km} km</span>
-              <span className="summary-label">Distancia Total</span>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
+              {loading && (
+                <span style={{ fontSize: '12px', color: '#6b7280', background: '#f3f4f6', padding: '3px 10px', borderRadius: '99px' }}>
+                  Analizando tramos y topografía
+                </span>
+              )}
+              {indicationsLoading && (
+                <span style={{ fontSize: '12px', color: '#6b7280', background: '#f3f4f6', padding: '3px 10px', borderRadius: '99px' }}>
+                  Extrayendo señales e indicaciones viales
+                </span>
+              )}
             </div>
           </div>
         </div>
       )}
 
-      {/* Map appears immediately on route load; reference markers update after
-          analysis when parsedInput.references (backend-matched) is available */}
-      {routeReady && routeData && (
-        <div className="container">
-          <h2>Mapa de Ruta</h2>
-          <RouteAnalysisMap
-            tramos={tramos}
-            coordinates={parsedInput?.coordinates ?? routeData.coordinates}
-            references={parsedInput?.references ?? []}
-            indications={indications}
-            visibleLayers={visibleLayers}
-            onToggleLayer={handleToggleLayer}
-            indicationsLoading={indicationsLoading}
-          />
-        </div>
-      )}
+      {fullyLoaded && (
+        <>
+          {summary && (
+            <div className="container">
+              <div className="route-summary">
+                <div className="summary-stat">
+                  <span className="summary-value">{summary.total_tramos}</span>
+                  <span className="summary-label">Tramos</span>
+                </div>
+                <div className="summary-divider" />
+                <div className="summary-stat">
+                  <span className="summary-value">{summary.distancia_total_km} km</span>
+                  <span className="summary-label">Distancia Total</span>
+                </div>
+              </div>
+            </div>
+          )}
 
-      {tramos && tramos.length > 0 && (
-        <div className="container">
-          <h2>Tabla de Tramos</h2>
-          <div className="eld-log">
-            <table className="log-table tramo-table">
-              <thead>
-                <tr>
-                  <th style={{ textAlign: 'center', width: '60px' }}>Tramo</th>
-                  <th>Posición Inicial</th>
-                  <th>Posición Final</th>
-                  <th>Trazo / Topografía</th>
-                  <th>Referencias</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tramos.map((tramo) => (
-                  <>
-                    <tr key={tramo.numero}>
-                      <td style={{ fontWeight: 700, textAlign: 'center', color: '#6d28d9', verticalAlign: 'top' }}>
-                        {tramo.numero}
-                      </td>
-                      <td style={{ verticalAlign: 'top' }}><CoordCell pos={tramo.posicion_inicial} /></td>
-                      <td style={{ verticalAlign: 'top' }}><CoordCell pos={tramo.posicion_final} /></td>
-                      <td style={{ verticalAlign: 'top' }}>
-                        <TrazoBadge trazo={tramo.trazo_topografia} />
-                        {tramo.risk_analysis && (
-                          <div style={{ marginTop: '4px', fontSize: '11px', color: '#9ca3af' }}>
-                            {tramo.distancia_km} km
-                          </div>
-                        )}
-                      </td>
-                      <td style={{ verticalAlign: 'top' }}>
-                        <ul className="referencias-list">
-                          {tramo.referencias.map((ref, i) => <li key={i}>{ref}</li>)}
-                        </ul>
-                      </td>
+          <div className="container">
+            <h2>Mapa de Ruta</h2>
+            <RouteAnalysisMap
+              tramos={tramos}
+              coordinates={parsedInput?.coordinates ?? routeData.coordinates}
+              references={parsedInput?.references ?? []}
+              densePoints={densePoints}
+              indications={indications}
+              visibleLayers={visibleLayers}
+              onToggleLayer={handleToggleLayer}
+              indicationsLoading={false}
+            />
+          </div>
+
+          {tramos && tramos.length > 0 && (
+            <div className="container">
+              <h2>Tabla de Tramos</h2>
+              <div className="eld-log">
+                <table className="log-table tramo-table">
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: 'center', width: '60px' }}>Tramo</th>
+                      <th>Posición Inicial</th>
+                      <th>Posición Final</th>
+                      <th>Trazo / Topografía</th>
+                      <th>Referencias</th>
                     </tr>
-                    {tramo.risk_analysis && (
-                      <tr key={`risk-${tramo.numero}`}>
-                        <td colSpan={5} style={{ padding: '0 12px 16px', background: '#fafafa' }}>
-                          <RiskAnalysisPanel riskAnalysis={tramo.risk_analysis} />
-                        </td>
-                      </tr>
-                    )}
-                  </>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                  </thead>
+                  <tbody>
+                    {tramos.map((tramo) => (
+                      <>
+                        <tr key={tramo.numero}>
+                          <td style={{ fontWeight: 700, textAlign: 'center', color: '#6d28d9', verticalAlign: 'top' }}>
+                            {tramo.numero}
+                          </td>
+                          <td style={{ verticalAlign: 'top' }}><CoordCell pos={tramo.posicion_inicial} /></td>
+                          <td style={{ verticalAlign: 'top' }}><CoordCell pos={tramo.posicion_final} /></td>
+                          <td style={{ verticalAlign: 'top' }}>
+                            <TrazoBadge trazo={tramo.trazo_topografia} />
+                            {tramo.risk_analysis && (
+                              <div style={{ marginTop: '4px', fontSize: '11px', color: '#9ca3af' }}>
+                                {tramo.distancia_km} km
+                              </div>
+                            )}
+                          </td>
+                          <td style={{ verticalAlign: 'top' }}>
+                            <ul className="referencias-list">
+                              {tramo.referencias.map((ref, i) => <li key={i}>{ref}</li>)}
+                            </ul>
+                          </td>
+                        </tr>
+                        {tramo.risk_analysis && (
+                          <tr key={`risk-${tramo.numero}`}>
+                            <td colSpan={5} style={{ padding: '0 12px 16px', background: '#fafafa' }}>
+                              <RiskAnalysisPanel riskAnalysis={tramo.risk_analysis} />
+                            </td>
+                          </tr>
+                        )}
+                      </>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {bitacora.length > 0 && (
+            <div className="container">
+              <h2>Bitácora de Ruta</h2>
+              <p style={{ fontSize: '13px', color: '#6b7280', marginTop: 0, marginBottom: '12px' }}>
+                Referencias ordenadas por km desde el origen — casetas, paraderos, gasolineras y rampas
+                encontradas a lo largo del recorrido con su elevación aproximada.
+              </p>
+              <div className="eld-log">
+                <table className="log-table tramo-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: '80px' }}>Km</th>
+                      <th style={{ width: '120px' }}>Tipo</th>
+                      <th>Referencia</th>
+                      <th style={{ width: '90px', textAlign: 'right' }}>Altitud</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bitacora.map((item, i) => {
+                      const s = REF_BADGE[item.type] || { bg: '#f3f4f6', color: '#374151' }
+                      return (
+                        <tr key={i}>
+                          <td style={{ fontWeight: 700, color: '#374151', fontFamily: 'monospace', fontSize: '13px' }}>
+                            km {item.km}
+                          </td>
+                          <td>
+                            <span style={{
+                              background: s.bg, color: s.color,
+                              padding: '2px 9px', borderRadius: '99px',
+                              fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+                            }}>
+                              {REF_LABEL[item.type] || item.type}
+                            </span>
+                          </td>
+                          <td style={{ fontSize: '13px' }}>{item.name}</td>
+                          <td style={{ color: '#6b7280', fontSize: '12px', textAlign: 'right' }}>
+                            {item.elev} m
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   )

@@ -1,11 +1,10 @@
 import { MapContainer, TileLayer, Marker, Popup, Polyline, LayerGroup, useMap } from 'react-leaflet'
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import MapLayerControls from './MapLayerControls'
 import { INDICATION_TYPES, countByType } from '../services/indicationService'
 
-// ── Trazo colours ─────────────────────────────────────────────────────────────
 const TRAZO_COLOR = {
   'Recta':             '#3b82f6',
   'Recta Ascendente':  '#22c55e',
@@ -14,12 +13,10 @@ const TRAZO_COLOR = {
   'Curva Descendente': '#f97316',
 }
 
-// ── Static reference-point colours / letters ──────────────────────────────────
 const REF_COLOR  = { caseta: '#ef4444', paradero: '#0ea5e9', gasolinera: '#f97316', rampa: '#8b5cf6' }
 const REF_LETTER = { caseta: 'C',       paradero: 'P',       gasolinera: 'G',       rampa: 'R' }
 const REF_LABEL  = { caseta: 'Caseta',  paradero: 'Paradero', gasolinera: 'Gasolinera', rampa: 'Rampa' }
 
-// ── Icon factories ────────────────────────────────────────────────────────────
 const createNumberIcon = (num) =>
   L.divIcon({
     className: '',
@@ -37,38 +34,64 @@ const createRefIcon = (type) => {
   const ltr = REF_LETTER[type] || '?'
   return L.divIcon({
     className: '',
-    html: `<div style="background:${bg};color:white;width:18px;height:18px;
-      border-radius:4px;border:2px solid white;
-      box-shadow:0 2px 4px rgba(0,0,0,0.35);
+    html: `<div style="background:${bg};color:white;width:22px;height:22px;
+      border-radius:6px;border:2.5px solid white;
+      box-shadow:0 2px 8px rgba(0,0,0,0.5);
       display:flex;align-items:center;justify-content:center;
-      font-weight:700;font-size:11px;font-family:system-ui,sans-serif;line-height:1;
+      font-weight:700;font-size:12px;font-family:system-ui,sans-serif;line-height:1;
     ">${ltr}</div>`,
-    iconSize: [18, 18], iconAnchor: [9, 9], popupAnchor: [0, -11],
+    iconSize: [22, 22], iconAnchor: [11, 11], popupAnchor: [0, -13],
   })
 }
 
-// Indication icons are intentionally smaller (14 px) than route markers so
-// they don't hide road geometry.  Semi-transparency keeps roads legible.
+const createKmIcon = (km) =>
+  L.divIcon({
+    className: '',
+    html: `<div style="display:flex;align-items:center;gap:2px;">
+      <div style="width:5px;height:5px;background:rgba(30,30,30,0.85);border-radius:50%;flex-shrink:0;border:1px solid white;"></div>
+      <div style="background:rgba(30,30,30,0.75);color:#fff;padding:1px 4px;border-radius:2px;font-size:8px;font-weight:700;font-family:monospace;white-space:nowrap;">km&nbsp;${km}</div>
+    </div>`,
+    iconSize: [54, 14],
+    iconAnchor: [3, 7],
+  })
+
 const createIndicationIcon = (type) => {
   const meta = INDICATION_TYPES[type] || { icon: '?', color: '#6b7280' }
   return L.divIcon({
     className: '',
     html: `<div style="
-      background:${meta.color};
-      color:white;
-      width:14px;height:14px;
-      border-radius:3px;
+      background:${meta.color};color:white;
+      width:14px;height:14px;border-radius:3px;
       border:1.5px solid rgba(255,255,255,0.85);
       box-shadow:0 1px 4px rgba(0,0,0,0.35);
       display:flex;align-items:center;justify-content:center;
-      font-weight:700;font-size:9px;font-family:system-ui,sans-serif;line-height:1;
-      opacity:0.9;
+      font-weight:700;font-size:9px;font-family:system-ui,sans-serif;
+      line-height:1;opacity:0.9;
     ">${meta.icon}</div>`,
     iconSize: [14, 14], iconAnchor: [7, 7], popupAnchor: [0, -9],
   })
 }
 
-// ── Auto-fit bounds helper ────────────────────────────────────────────────────
+// Snap a reference marker to the nearest point in routePoints so it sits
+// exactly on the ORS road centerline rather than at its static coordinate.
+function snapToRoute(refLat, refLon, routePoints) {
+  if (!routePoints?.length) return [refLat, refLon]
+  let minSq = Infinity
+  let bestLat = refLat
+  let bestLon = refLon
+  for (const p of routePoints) {
+    const dlat = refLat - p.lat
+    const dlon = refLon - p.lon
+    const sq = dlat * dlat + dlon * dlon
+    if (sq < minSq) {
+      minSq = sq
+      bestLat = p.lat
+      bestLon = p.lon
+    }
+  }
+  return [bestLat, bestLon]
+}
+
 function FitBounds({ positions }) {
   const map = useMap()
   useEffect(() => {
@@ -77,45 +100,86 @@ function FitBounds({ positions }) {
   return null
 }
 
-// ── Map each tramo back to its slice of the input coordinates ─────────────────
-function buildTramoPositions(tramos, coordinates) {
-  const EPS = 1e-5
-  const idx = (pos) =>
-    coordinates.findIndex(
-      (c) => Math.abs(c.lat - pos.lat) < EPS && Math.abs(c.lon - pos.lon) < EPS
-    )
-
-  return tramos.map((tramo) => {
-    const si = idx(tramo.posicion_inicial)
-    const ei = idx(tramo.posicion_final)
-    if (si === -1 || ei === -1 || si >= ei) {
-      return [
-        [tramo.posicion_inicial.lat, tramo.posicion_inicial.lon],
-        [tramo.posicion_final.lat,   tramo.posicion_final.lon],
-      ]
+// Build per-tramo polyline positions via nearest-neighbor search in routePts.
+// When routePts = densePoints (full ORS geometry), each tramo segment traces
+// every bend in the road instead of drawing a straight line.
+function buildTramoPositions(tramos, routePts) {
+  if (!routePts?.length) {
+    return (tramos || []).map(t => [
+      [t.posicion_inicial.lat, t.posicion_inicial.lon],
+      [t.posicion_final.lat,   t.posicion_final.lon],
+    ])
+  }
+  const nearestIdx = (lat, lon) => {
+    let minSq = Infinity, best = 0
+    for (let i = 0; i < routePts.length; i++) {
+      const p = routePts[i]
+      const sq = (lat - p.lat) ** 2 + (lon - p.lon) ** 2
+      if (sq < minSq) { minSq = sq; best = i }
     }
-    return coordinates.slice(si, ei + 1).map((c) => [c.lat, c.lon])
+    return best
+  }
+  return (tramos || []).map(t => {
+    const si = nearestIdx(t.posicion_inicial.lat, t.posicion_inicial.lon)
+    const ei = nearestIdx(t.posicion_final.lat,   t.posicion_final.lon)
+    if (si >= ei) return [
+      [t.posicion_inicial.lat, t.posicion_inicial.lon],
+      [t.posicion_final.lat,   t.posicion_final.lon],
+    ]
+    return routePts.slice(si, ei + 1).map(p => [p.lat, p.lon])
   })
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
 function RouteAnalysisMap({
   tramos,
   coordinates,
   references,
+  densePoints,
   indications,
   visibleLayers,
   onToggleLayer,
   indicationsLoading,
 }) {
+  // All useMemo calls BEFORE the early return — rules of hooks.
+  const allPositions = useMemo(() => {
+    const pts = densePoints?.length ? densePoints : coordinates
+    return (pts || []).map(c => [c.lat, c.lon])
+  }, [densePoints, coordinates])
+
+  // Memoised so the O(T * N) nearest-neighbour pass only runs when the
+  // route or tramo segmentation actually changes.
+  const tramoPositions = useMemo(() => {
+    if (!tramos?.length) return []
+    const pts = densePoints?.length ? densePoints : coordinates
+    return buildTramoPositions(tramos, pts)
+  }, [tramos, densePoints, coordinates])
+
+  // One small label every 50 km along the route.
+  const kmMarkers = useMemo(() => {
+    if (!densePoints?.length) return []
+    const marks = []
+    let cumKm = 0
+    let nextTarget = 50
+    for (let i = 1; i < densePoints.length; i++) {
+      const p = densePoints[i], q = densePoints[i - 1]
+      const dlat = (p.lat - q.lat) * 111
+      const dlon = (p.lon - q.lon) * 111 * Math.cos(q.lat * Math.PI / 180)
+      cumKm += Math.sqrt(dlat * dlat + dlon * dlon)
+      if (cumKm >= nextTarget) {
+        marks.push({ lat: p.lat, lon: p.lon, km: Math.round(cumKm) })
+        nextTarget += 50
+      }
+    }
+    return marks
+  }, [densePoints])
+
   if (!coordinates?.length) return null
 
-  const allPositions   = coordinates.map((c) => [c.lat, c.lon])
-  const tramoPositions = tramos?.length ? buildTramoPositions(tramos, coordinates) : []
-  const inputRefs      = (references || []).filter((r) => REF_COLOR[r.type])
-  const indicationCounts = countByType(indications)
+  const inputRefs = (references || []).filter(
+    r => r && REF_COLOR[r.type] && isFinite(r.lat) && isFinite(r.lon)
+  )
 
-  // Group auto-extracted indications by type for per-LayerGroup rendering
+  const indicationCounts = countByType(indications)
   const indicationsByType = (indications || []).reduce((acc, ind) => {
     if (!acc[ind.type]) acc[ind.type] = []
     acc[ind.type].push(ind)
@@ -127,15 +191,11 @@ function RouteAnalysisMap({
 
   return (
     <>
-      {/*
-        Wrapper is position:relative so the floating layer-control panel can
-        be position:absolute over the map without being a Leaflet child.
-      */}
       <div style={{ position: 'relative' }}>
         <MapContainer
           center={[23.6345, -102.5528]}
           zoom={5}
-          style={{ height: '500px', width: '100%', borderRadius: '10px' }}
+          style={{ height: '520px', width: '100%', borderRadius: '10px' }}
         >
           <FitBounds positions={allPositions} />
           <TileLayer
@@ -143,10 +203,10 @@ function RouteAnalysisMap({
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           />
 
-          {/* Full-route grey polyline — always visible, sits below coloured layers */}
-          <Polyline positions={allPositions} color="#9ca3af" weight={2} opacity={0.45} />
+          {/* Grey background polyline following actual road geometry */}
+          <Polyline positions={allPositions} color="#9ca3af" weight={2} opacity={0.4} />
 
-          {/* Coloured per-tramo polylines (rendered only after analysis completes) */}
+          {/* Per-tramo coloured polylines — road-following via densePoints */}
           {tramos?.map((tramo, i) => (
             <Polyline
               key={tramo.numero}
@@ -162,8 +222,13 @@ function RouteAnalysisMap({
             </Polyline>
           ))}
 
-          {/* Numbered markers at each tramo start */}
-          {tramos?.map((tramo) => (
+          {/* Km distance labels every 50 km */}
+          {kmMarkers.map(m => (
+            <Marker key={`km-${m.km}`} position={[m.lat, m.lon]} icon={createKmIcon(m.km)} />
+          ))}
+
+          {/* Tramo-start number markers */}
+          {tramos?.map(tramo => (
             <Marker
               key={`tn-${tramo.numero}`}
               position={[tramo.posicion_inicial.lat, tramo.posicion_inicial.lon]}
@@ -176,59 +241,51 @@ function RouteAnalysisMap({
             </Marker>
           ))}
 
-          {/* Static reference markers (casetas, paraderos, gasolineras, rampas) */}
-          {inputRefs.map((ref, i) => (
-            <Marker
-              key={`ref-${i}`}
-              position={[ref.lat, ref.lon]}
-              icon={createRefIcon(ref.type)}
-            >
-              <Popup>
-                <strong>{ref.name}</strong><br />
-                <span style={{ textTransform: 'capitalize' }}>{REF_LABEL[ref.type]}</span>
-              </Popup>
-            </Marker>
-          ))}
+          {/* Reference markers — snapped to the nearest dense-route point */}
+          {inputRefs.map((ref, i) => {
+            const [lat, lon] = snapToRoute(ref.lat, ref.lon, densePoints)
+            return (
+              <Marker key={`ref-${i}`} position={[lat, lon]} icon={createRefIcon(ref.type)}>
+                <Popup>
+                  <strong>{ref.name}</strong><br />
+                  <span style={{ textTransform: 'capitalize' }}>{REF_LABEL[ref.type]}</span>
+                </Popup>
+              </Marker>
+            )
+          })}
 
-          {/*
-            Auto-extracted indication layers.
-            Each type lives in its own LayerGroup so toggling visibility
-            is a pure React render without redrawing the base map or other layers.
-          */}
+          {/* Auto-extracted indication layers, one LayerGroup per type */}
           {Object.entries(indicationsByType).map(([type, items]) =>
             visibleLayers?.has(type) ? (
               <LayerGroup key={type}>
-                {items.map((ind, i) => (
-                  <Marker
-                    key={`ind-${type}-${i}`}
-                    position={[ind.lat, ind.lon]}
-                    icon={createIndicationIcon(type)}
-                  >
-                    <Popup>
-                      <strong>{ind.label}</strong><br />
-                      <span style={{ fontSize: '11px', color: '#6b7280' }}>
-                        {INDICATION_TYPES[type]?.label}
-                      </span>
-                      {ind.metadata?.maxspeed && (
-                        <><br /><span>Límite: {ind.metadata.maxspeed} km/h</span></>
-                      )}
-                    </Popup>
-                  </Marker>
-                ))}
+                {items
+                  .filter(ind => isFinite(ind.lat) && isFinite(ind.lon))
+                  .map((ind, i) => (
+                    <Marker
+                      key={`ind-${type}-${i}`}
+                      position={[ind.lat, ind.lon]}
+                      icon={createIndicationIcon(type)}
+                    >
+                      <Popup>
+                        <strong>{ind.label}</strong><br />
+                        <span style={{ fontSize: '11px', color: '#6b7280' }}>
+                          {INDICATION_TYPES[type]?.label}
+                        </span>
+                        {ind.metadata?.maxspeed && (
+                          <><br /><span>Límite: {ind.metadata.maxspeed} km/h</span></>
+                        )}
+                      </Popup>
+                    </Marker>
+                  ))}
               </LayerGroup>
             ) : null
           )}
         </MapContainer>
 
-        {/* Layer-control panel — positioned over the map, outside MapContainer
-            so it does not interfere with Leaflet's internal event handling */}
         {showLayerPanel && (
           <div style={{
-            position: 'absolute',
-            top: '10px',
-            right: '10px',
-            zIndex: 9999,
-            pointerEvents: 'all',
+            position: 'absolute', top: '10px', right: '10px',
+            zIndex: 9999, pointerEvents: 'all',
           }}>
             <MapLayerControls
               visibleLayers={visibleLayers}
@@ -240,7 +297,6 @@ function RouteAnalysisMap({
         )}
       </div>
 
-      {/* Trazo legend */}
       <div className="map-legend">
         {Object.entries(TRAZO_COLOR).map(([label, color]) => (
           <div key={label} className="legend-item">

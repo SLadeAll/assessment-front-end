@@ -1,32 +1,22 @@
-/**
- * Indication extraction service.
- *
- * Provides type metadata for rendering, a default visible-layers set,
- * and the fetch helper that calls the backend extract-indications endpoint.
- */
-
 export const INDICATION_TYPES = {
-  traffic_signal:  { label: 'Semáforos',              icon: 'S', color: '#ef4444' },
-  stop_sign:       { label: 'Señales de Alto',         icon: 'A', color: '#dc2626' },
-  speed_bump:      { label: 'Topes / Reductores',      icon: 'T', color: '#f97316' },
-  level_crossing:  { label: 'Cruces Ferroviarios',     icon: 'F', color: '#8b5cf6' },
-  fuel_station:    { label: 'Gasolineras',             icon: 'G', color: '#f59e0b' },
-  rest_area:       { label: 'Áreas de Descanso',        icon: 'D', color: '#0ea5e9' },
-  toll:            { label: 'Casetas de Cobro',        icon: 'C', color: '#ef4444' },
-  construction:    { label: 'Zonas de Obra',           icon: 'O', color: '#f97316' },
-  speed_limit:     { label: 'Límites de Velocidad',    icon: 'V', color: '#6b7280' },
-  landmark:        { label: 'Referencias Viales',      icon: 'R', color: '#10b981' },
+  stop_sign:      { label: 'Señales de Alto',        icon: 'A', color: '#dc2626' },
+  speed_bump:     { label: 'Topes / Reductores',      icon: 'T', color: '#f97316' },
+  level_crossing: { label: 'Cruces Ferroviarios',     icon: 'F', color: '#8b5cf6' },
+  fuel_station:   { label: 'Gasolineras',             icon: 'G', color: '#f59e0b' },
+  rest_area:      { label: 'Paraderos / Descanso',    icon: 'D', color: '#0ea5e9' },
+  toll:           { label: 'Casetas de Cobro',        icon: 'C', color: '#ef4444' },
+  construction:   { label: 'Zonas de Obra',           icon: 'O', color: '#ea580c' },
+  speed_limit:    { label: 'Límites de Velocidad',   icon: 'V', color: '#6b7280' },
+  landmark:       { label: 'Referencias Viales',      icon: 'R', color: '#10b981' },
 }
 
-// Layer types shown by default when a route is first loaded
+// Default visible layers focus on paraderos and casetas; secondary types
+// (stop signs, topes, speed limits) are hidden by default to keep the map clean.
 export const DEFAULT_VISIBLE_LAYERS = new Set([
-  'traffic_signal',
-  'stop_sign',
-  'speed_bump',
-  'level_crossing',
-  'fuel_station',
-  'rest_area',
   'toll',
+  'rest_area',
+  'fuel_station',
+  'level_crossing',
   'construction',
 ])
 
