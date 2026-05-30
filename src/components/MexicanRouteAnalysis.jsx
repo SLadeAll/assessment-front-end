@@ -122,19 +122,85 @@ function CoordCell({ pos }) {
   return <span className="coord-cell">{toDMS(pos.lat, pos.lon)}</span>
 }
 
-// Returns reference points within maxKm of any coordinate in the route
-function filterNearbyRefs(routeCoords, maxKm = 20) {
-  return MEXICAN_REFERENCES.filter(ref =>
-    routeCoords.some(c => {
-      const dlat = (ref.lat - c.lat) * 111
-      const dlon = (ref.lon - c.lon) * 111 * Math.cos(c.lat * Math.PI / 180)
-      return Math.sqrt(dlat * dlat + dlon * dlon) <= maxKm
-    })
-  )
+// Proximity check: true if ref is within maxKm of any route coord
+function nearRoute(ref, routeCoords, maxKm = 2.5) {
+  return routeCoords.some(c => {
+    const dlat = (ref.lat - c.lat) * 111
+    const dlon = (ref.lon - c.lon) * 111 * Math.cos(c.lat * Math.PI / 180)
+    return Math.sqrt(dlat * dlat + dlon * dlon) <= maxKm
+  })
+}
+
+// Fetch real reference points from OpenStreetMap via Overpass API.
+// Falls back to the static MEXICAN_REFERENCES database on failure.
+async function fetchRouteRefs(routeCoords) {
+  const lats = routeCoords.map(c => c.lat)
+  const lons = routeCoords.map(c => c.lon)
+  const south = (Math.min(...lats) - 0.05).toFixed(4)
+  const north = (Math.max(...lats) + 0.05).toFixed(4)
+  const west  = (Math.min(...lons) - 0.05).toFixed(4)
+  const east  = (Math.max(...lons) + 0.05).toFixed(4)
+  const bbox  = `${south},${west},${north},${east}`
+
+  // Gas stations: query within 500m of ~25 evenly-spaced route points
+  const step = Math.max(1, Math.floor(routeCoords.length / 25))
+  const fuelAround = routeCoords
+    .filter((_, i) => i % step === 0)
+    .map(c => `node["amenity"="fuel"](around:500,${c.lat.toFixed(5)},${c.lon.toFixed(5)});`)
+    .join('\n  ')
+
+  const query =
+    `[out:json][timeout:28];\n` +
+    `(\n` +
+    `  node["barrier"="toll_booth"](${bbox});\n` +
+    `  node["highway"="escape"](${bbox});\n` +
+    `  node["highway"="rest_area"](${bbox});\n` +
+    `  node["amenity"="rest_area"](${bbox});\n` +
+    `  ${fuelAround}\n` +
+    `);\nout body;`
+
+  try {
+    const r = await axios.post(
+      'https://overpass-api.de/api/interpreter',
+      new URLSearchParams({ data: query }),
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 32000 }
+    )
+
+    const seen = new Set()
+    const osmRefs = r.data.elements
+      .filter(el => el.lat && el.lon && !seen.has(el.id) && seen.add(el.id))
+      .map(el => {
+        const t = el.tags || {}
+        if (t.barrier === 'toll_booth')
+          return { lat: el.lat, lon: el.lon, type: 'caseta',    name: t.name || t.ref || 'Caseta de cobro' }
+        if (t.highway === 'escape')
+          return { lat: el.lat, lon: el.lon, type: 'rampa',     name: t.name || 'Rampa de emergencia' }
+        if (t.highway === 'rest_area' || t.amenity === 'rest_area')
+          return { lat: el.lat, lon: el.lon, type: 'paradero',  name: t.name || 'Área de descanso' }
+        if (t.amenity === 'fuel')
+          return { lat: el.lat, lon: el.lon, type: 'gasolinera', name: t.name || t.brand || 'Gasolinera' }
+        return null
+      })
+      .filter(r => r && nearRoute(r, routeCoords))
+
+    // Merge static fallback references that OSM didn't already cover
+    const merged = [...osmRefs]
+    for (const s of MEXICAN_REFERENCES) {
+      if (!nearRoute(s, routeCoords)) continue
+      const duplicate = osmRefs.some(
+        o => o.type === s.type && Math.abs(o.lat - s.lat) < 0.04 && Math.abs(o.lon - s.lon) < 0.04
+      )
+      if (!duplicate) merged.push(s)
+    }
+    return merged
+  } catch {
+    // Overpass unavailable — use static database
+    return MEXICAN_REFERENCES.filter(r => nearRoute(r, routeCoords))
+  }
 }
 
 // Downsample dense ORS route coordinates to ~targetKm spacing
-function downsample(coords, targetKm = 35) {
+function downsample(coords, targetKm = 2) {
   if (coords.length < 2) return coords
   const result = [coords[0]]
   let last = coords[0]
@@ -212,6 +278,7 @@ function MexicanRouteAnalysis({ token }) {
   const [destSuggs, setDestSuggs] = useState([])
   const [stopSuggs, setStopSuggs] = useState([])  // array of arrays
   const [routeLoading, setRouteLoading] = useState(false)
+  const [routeStep, setRouteStep] = useState('')   // 'geo' | 'route' | 'refs' | ''
   const [routeReady, setRouteReady] = useState(false)
   const [routePreview, setRoutePreview] = useState(null)
 
@@ -255,6 +322,7 @@ function MexicanRouteAnalysis({ token }) {
       return
     }
     setRouteLoading(true)
+    setRouteStep('geo')
     setError('')
     setRouteReady(false)
     setRoutePreview(null)
@@ -266,6 +334,7 @@ function MexicanRouteAnalysis({ token }) {
       const allCities = [origin.trim(), ...stops.filter(s => s.trim()), destination.trim()]
       const geocoded = await Promise.all(allCities.map(geocodeText)) // [[lon, lat], ...]
 
+      setRouteStep('route')
       const routeRes = await axios.post(
         `https://api.openrouteservice.org/v2/directions/driving-car/geojson?api_key=${ORS_KEY}`,
         { coordinates: geocoded, elevation: true, instructions: false },
@@ -278,8 +347,10 @@ function MexicanRouteAnalysis({ token }) {
       const allPoints = rawCoords.map(([lon, lat, elevation]) => ({
         lat, lon, elevation: Math.round(elevation || 0),
       }))
-      const sampled = downsample(allPoints, 35)
-      const refs = filterNearbyRefs(sampled)
+      const sampled = downsample(allPoints, 2)
+
+      setRouteStep('refs')
+      const refs = await fetchRouteRefs(sampled)
 
       const label = allCities.join(' → ')
       setRouteData({ coordinates: sampled, references: refs })
@@ -289,6 +360,7 @@ function MexicanRouteAnalysis({ token }) {
       setError(err.response?.data?.error || err.message || 'Error al obtener la ruta.')
     } finally {
       setRouteLoading(false)
+      setRouteStep('')
     }
   }
 
@@ -512,7 +584,12 @@ function MexicanRouteAnalysis({ token }) {
               <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
               <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
             </svg>
-            {routeLoading ? 'Obteniendo ruta…' : 'Obtener Ruta'}
+            {routeLoading
+              ? routeStep === 'geo'   ? 'Geocodificando…'
+              : routeStep === 'route' ? 'Trazando ruta…'
+              : routeStep === 'refs'  ? 'Buscando referencias…'
+              : 'Procesando…'
+              : 'Obtener Ruta'}
           </button>
         </div>
 
