@@ -3,6 +3,7 @@ import axios from 'axios'
 import RouteAnalysisMap from './RouteAnalysisMap'
 import RiskAnalysisPanel from './RiskAnalysisPanel'
 import { fetchIndications, DEFAULT_VISIBLE_LAYERS } from '../services/indicationService'
+import { FALLBACK_REFERENCES } from '../data/routeReferences'
 
 const API_BASE = `${import.meta.env.VITE_API_URL ?? 'https://eld-backend-one.vercel.app'}/api`
 const ORS_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjMxZDk5OTJjNGM5MDRkMWE5M2ExYzhjZGU0OTljZDhmIiwiaCI6Im11cm11cjY0In0='
@@ -144,14 +145,15 @@ function MexicanRouteAnalysis({ token }) {
   const [indicationsLoading, setIndicationsLoading] = useState(false)
   const [visibleLayers, setVisibleLayers] = useState(DEFAULT_VISIBLE_LAYERS)
 
-  const [allReferences, setAllReferences] = useState([])
-  const [refsLoading, setRefsLoading] = useState(true)
+  const [allReferences, setAllReferences] = useState(FALLBACK_REFERENCES)
 
   useEffect(() => {
     axios.get(`${API_BASE}/route-analysis/references/`)
-      .then(r => setAllReferences(r.data.references || []))
+      .then(r => {
+        const refs = r.data.references || []
+        if (refs.length) setAllReferences(refs)
+      })
       .catch(() => {})
-      .finally(() => setRefsLoading(false))
   }, [])
 
   const fullyLoaded = routeReady && !!tramos && !loading && !indicationsLoading
@@ -456,15 +458,15 @@ function MexicanRouteAnalysis({ token }) {
           onClearSuggestions={() => setDestSuggs([])}
         />
 
-        <div style={{ marginTop: '16px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+        <div style={{ marginTop: '16px' }}>
           <button
             type="button" onClick={handleGetRoute}
-            disabled={routeLoading || refsLoading}
+            disabled={routeLoading}
             style={{
-              background: (routeLoading || refsLoading) ? '#9ca3af' : '#2563eb',
+              background: routeLoading ? '#9ca3af' : '#2563eb',
               color: '#fff', border: 'none', borderRadius: '6px',
               padding: '9px 22px', fontWeight: 700, fontSize: '14px',
-              cursor: (routeLoading || refsLoading) ? 'not-allowed' : 'pointer',
+              cursor: routeLoading ? 'not-allowed' : 'pointer',
               display: 'flex', alignItems: 'center', gap: '8px',
             }}
           >
@@ -475,11 +477,6 @@ function MexicanRouteAnalysis({ token }) {
             </svg>
             {routeLoading ? 'Obteniendo ruta…' : 'Obtener Ruta'}
           </button>
-          {refsLoading && (
-            <span style={{ fontSize: '12px', color: '#6b7280', background: '#f3f4f6', padding: '3px 10px', borderRadius: '99px' }}>
-              ⧗ Cargando referencias…
-            </span>
-          )}
         </div>
 
         {routeReady && (
