@@ -18,6 +18,53 @@ const TRAZO_STYLE = {
 }
 
 const REF_LABEL = { caseta: 'Caseta', paradero: 'Paradero', gasolinera: 'Gasolinera', rampa: 'Rampa', seguimiento: 'Control' }
+
+const EMERGENCY_SERVICES = [
+  { key: 'ambulancia',        label: 'Ambulancia',       color: '#dc2626', icon: '🚑' },
+  { key: 'hospital',          label: 'Hospital',         color: '#7c3aed', icon: '🏥' },
+  { key: 'sedena',            label: 'SEDENA',           color: '#1d4ed8', icon: '⚔️' },
+  { key: 'guardia_nacional',  label: 'Guardia Nacional', color: '#047857', icon: '🛡️' },
+  { key: 'policia_estatal',   label: 'Policía Estatal',  color: '#0369a1', icon: '👮' },
+  { key: 'policia_municipal', label: 'Policía Municipal',color: '#0e7490', icon: '🚔' },
+  { key: 'guardia_caminos',   label: 'Guardia Caminos',  color: '#92400e', icon: '🛣️' },
+]
+
+function EmergencyContacts({ contacts }) {
+  if (!contacts) return <span style={{ color: '#9ca3af', fontSize: '11px' }}>—</span>
+  return (
+    <div style={{ minWidth: '230px' }}>
+      {contacts.estado && (
+        <div style={{ fontSize: '10px', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px' }}>
+          📍 {contacts.estado}
+        </div>
+      )}
+      {EMERGENCY_SERVICES.map(({ key, label, color, icon }) => {
+        const list = contacts[key]
+        if (!list?.length) return null
+        return (
+          <div key={key} style={{ marginBottom: '7px' }}>
+            <div style={{ fontSize: '9px', fontWeight: 700, color, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '2px' }}>
+              {icon} {label}
+            </div>
+            {list.map((c, i) => (
+              <div key={i} style={{ fontSize: '11px', lineHeight: '1.4', display: 'flex', flexWrap: 'wrap', columnGap: '5px', alignItems: 'baseline' }}>
+                <span style={{ color: '#374151' }}>{c.nombre}:</span>
+                <a
+                  href={`tel:+52${c.telefono.replace(/\D/g, '')}`}
+                  style={{ color: '#2563eb', fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap' }}
+                  onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
+                  onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}
+                >
+                  {c.telefono}
+                </a>
+              </div>
+            ))}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 const REF_BADGE = {
   caseta:      { bg: '#fee2e2', color: '#b91c1c' },
   paradero:    { bg: '#e0f2fe', color: '#0369a1' },
@@ -663,6 +710,7 @@ function MexicanRouteAnalysis({ token }) {
                       <th>Posición Final</th>
                       <th>Trazo / Topografía</th>
                       <th>Referencias</th>
+                      <th style={{ minWidth: '250px' }}>Contactos de Emergencia</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -687,10 +735,13 @@ function MexicanRouteAnalysis({ token }) {
                               {tramo.referencias.map((ref, i) => <li key={i}>{ref}</li>)}
                             </ul>
                           </td>
+                          <td style={{ verticalAlign: 'top', padding: '8px 10px' }}>
+                            <EmergencyContacts contacts={tramo.emergency_contacts} />
+                          </td>
                         </tr>
                         {tramo.risk_analysis && (
                           <tr key={`risk-${tramo.numero}`}>
-                            <td colSpan={5} style={{ padding: '0 12px 16px', background: '#fafafa' }}>
+                            <td colSpan={6} style={{ padding: '0 12px 16px', background: '#fafafa' }}>
                               <RiskAnalysisPanel riskAnalysis={tramo.risk_analysis} />
                             </td>
                           </tr>
