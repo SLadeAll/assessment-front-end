@@ -17,12 +17,13 @@ const TRAZO_STYLE = {
   'Curva Descendente':  { bg: '#fff7ed', color: '#c2410c' },
 }
 
-const REF_LABEL = { caseta: 'Caseta', paradero: 'Paradero', gasolinera: 'Gasolinera', rampa: 'Rampa' }
+const REF_LABEL = { caseta: 'Caseta', paradero: 'Paradero', gasolinera: 'Gasolinera', rampa: 'Rampa', seguimiento: 'Control' }
 const REF_BADGE = {
-  caseta:     { bg: '#fee2e2', color: '#b91c1c' },
-  paradero:   { bg: '#e0f2fe', color: '#0369a1' },
-  gasolinera: { bg: '#fff7ed', color: '#c2410c' },
-  rampa:      { bg: '#f3e8ff', color: '#7e22ce' },
+  caseta:      { bg: '#fee2e2', color: '#b91c1c' },
+  paradero:    { bg: '#e0f2fe', color: '#0369a1' },
+  gasolinera:  { bg: '#fff7ed', color: '#c2410c' },
+  rampa:       { bg: '#f3e8ff', color: '#7e22ce' },
+  seguimiento: { bg: '#f1f5f9', color: '#475569' },
 }
 
 function TrazoBadge({ trazo }) {

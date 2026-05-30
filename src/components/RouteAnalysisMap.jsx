@@ -13,9 +13,9 @@ const TRAZO_COLOR = {
   'Curva Descendente': '#f97316',
 }
 
-const REF_COLOR  = { caseta: '#ef4444', paradero: '#0ea5e9', gasolinera: '#f97316', rampa: '#8b5cf6' }
-const REF_LETTER = { caseta: 'C',       paradero: 'P',       gasolinera: 'G',       rampa: 'R' }
-const REF_LABEL  = { caseta: 'Caseta',  paradero: 'Paradero', gasolinera: 'Gasolinera', rampa: 'Rampa' }
+const REF_COLOR  = { caseta: '#ef4444', paradero: '#0ea5e9', gasolinera: '#f97316', rampa: '#8b5cf6', seguimiento: '#475569' }
+const REF_LETTER = { caseta: 'C',       paradero: 'P',       gasolinera: 'G',       rampa: 'R',       seguimiento: '' }
+const REF_LABEL  = { caseta: 'Caseta',  paradero: 'Paradero', gasolinera: 'Gasolinera', rampa: 'Rampa', seguimiento: 'Punto de control' }
 
 const createNumberIcon = (num) =>
   L.divIcon({
@@ -32,6 +32,16 @@ const createNumberIcon = (num) =>
 const createRefIcon = (type) => {
   const bg  = REF_COLOR[type]  || '#6b7280'
   const ltr = REF_LETTER[type] || '?'
+  if (type === 'seguimiento') {
+    return L.divIcon({
+      className: '',
+      html: `<div style="background:${bg};width:9px;height:9px;
+        border-radius:50%;border:2px solid rgba(255,255,255,0.85);
+        box-shadow:0 1px 4px rgba(0,0,0,0.45);opacity:0.85;
+      "></div>`,
+      iconSize: [9, 9], iconAnchor: [4, 4], popupAnchor: [0, -7],
+    })
+  }
   return L.divIcon({
     className: '',
     html: `<div style="background:${bg};color:white;width:22px;height:22px;
@@ -313,7 +323,10 @@ function RouteAnalysisMap({
         </div>
         {Object.entries(REF_COLOR).map(([type, color]) => (
           <div key={type} className="legend-item">
-            <span className="legend-square" style={{ background: color }} />
+            {type === 'seguimiento'
+              ? <span style={{ display: 'inline-block', width: 9, height: 9, background: color, borderRadius: '50%', flexShrink: 0, opacity: 0.85, border: '2px solid rgba(255,255,255,0.85)' }} />
+              : <span className="legend-square" style={{ background: color }} />
+            }
             <span>{REF_LABEL[type]}</span>
           </div>
         ))}
