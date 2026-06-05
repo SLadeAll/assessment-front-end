@@ -236,6 +236,26 @@ export const FALLBACK_REFERENCES = [
   { lat: 23.560, lon: -99.230,  type: 'rampa',      name: 'Rampa Sierra Tamaulipas Km 380' },
 ]
 
+// Fixed dispatch origin for Servimaniobras SA de CV routes.
+export const FIXED_ORIGIN = {
+  name:       'Servimaniobras SA de CV, Manzanillo, Colima',
+  lat:        19.0811672,
+  lng:        -104.2689299,
+  searchText: 'Manzanillo, Colima, México',
+}
+
+// Static fallback for the 7 default destinations (mirrored from the backend).
+// Used when the API is unavailable or returns an empty list.
+export const DEFAULT_DESTINATIONS = [
+  { id: 1, name: 'Atotonilco, Estado de México',   lat: 19.9207515,  lng: -99.251266,   company: 'WEG' },
+  { id: 2, name: 'Huehuetoca, Estado de México',   lat: 19.8539528,  lng: -99.2380468,  company: 'WEG Voltran' },
+  { id: 3, name: 'Tizayuca, Hidalgo',              lat: 19.8223601,  lng: -98.975169,   company: 'Voltran' },
+  { id: 4, name: 'Santa Catarina, Nuevo León',     lat: 25.7038605,  lng: -100.4958117, company: 'Marathon' },
+  { id: 5, name: 'Tecoman, Colima',                lat: 18.9521368,  lng: -103.8914258, company: 'Solarever' },
+  { id: 6, name: 'Ciénega de Flores, Nuevo León',  lat: 25.9355552,  lng: -100.2052263, company: 'Volvo' },
+  { id: 7, name: 'Querétaro, Querétaro',           lat: 20.6057797,  lng: -100.4206192, company: 'Clinic' },
+]
+
 // Predefined routes for the quick-selector UI.
 // Origins: Manzanillo, Colima and Veracruz, Veracruz.
 // Destinations: Guadalajara, CDMX, Estado de México, Nuevo León.

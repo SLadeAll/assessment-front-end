@@ -3,7 +3,7 @@ import axios from 'axios'
 import RouteAnalysisMap from './RouteAnalysisMap'
 import RiskAnalysisPanel from './RiskAnalysisPanel'
 import { fetchIndications, DEFAULT_VISIBLE_LAYERS } from '../services/indicationService'
-import { FALLBACK_REFERENCES, PREDEFINED_ROUTES } from '../data/routeReferences'
+import { FALLBACK_REFERENCES, PREDEFINED_ROUTES, FIXED_ORIGIN, DEFAULT_DESTINATIONS } from '../data/routeReferences'
 
 const API_BASE = `${import.meta.env.VITE_API_URL ?? 'https://eld-backend-one.vercel.app'}/api`
 const ORS_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjMxZDk5OTJjNGM5MDRkMWE5M2ExYzhjZGU0OTljZDhmIiwiaCI6Im11cm11cjY0In0='
@@ -95,6 +95,15 @@ function dmsComponent(decimal, posDir, negDir) {
 
 function toDMS(lat, lon) {
   return `${dmsComponent(lat, 'N', 'S')}-${dmsComponent(lon, 'E', 'O')}`
+}
+
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371
+  const toRad = (d) => d * Math.PI / 180
+  const dLat = toRad(lat2 - lat1)
+  const dLng = toRad(lng2 - lng1)
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2
+  return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * 1.3)
 }
 
 function CoordCell({ pos }) {
@@ -194,12 +203,20 @@ function MexicanRouteAnalysis({ token }) {
   const [visibleLayers, setVisibleLayers] = useState(DEFAULT_VISIBLE_LAYERS)
 
   const [allReferences, setAllReferences] = useState(FALLBACK_REFERENCES)
+  const [defaultDestinations, setDefaultDestinations] = useState(DEFAULT_DESTINATIONS)
 
   useEffect(() => {
     axios.get(`${API_BASE}/route-analysis/references/`)
       .then(r => {
         const refs = r.data.references || []
         if (refs.length) setAllReferences(refs)
+      })
+      .catch(() => {})
+
+    axios.get(`${API_BASE}/route-analysis/default-destinations/`)
+      .then(r => {
+        const dests = r.data.destinations || []
+        if (dests.length) setDefaultDestinations(dests)
       })
       .catch(() => {})
   }, [])
@@ -430,6 +447,24 @@ function MexicanRouteAnalysis({ token }) {
     setIndications([])
   }
 
+  const applyDefaultDestination = (dest) => {
+    setOrigin(FIXED_ORIGIN.searchText)
+    setDestination(dest.name)
+    setStops([])
+    setStopSuggs([])
+    setOriginSuggs([])
+    setDestSuggs([])
+    setRouteReady(false)
+    setRoutePreview(null)
+    setRouteData(null)
+    setDensePoints(null)
+    setTramos(null)
+    setSummary(null)
+    setParsedInput(null)
+    setIndications([])
+    setError('')
+  }
+
   const addStop = () => {
     setStops(s => [...s, ''])
     setStopSuggs(s => [...s, []])
@@ -456,6 +491,43 @@ function MexicanRouteAnalysis({ token }) {
           extraerá automáticamente las indicaciones viales y generará el desglose
           completo de tramos, topografía y tabla PROCESO.
         </p>
+
+        <div style={{ marginBottom: '20px', background: '#f8faff', border: '1px solid #dbeafe', borderRadius: '10px', padding: '14px 16px' }}>
+          <p style={{ fontSize: '12px', fontWeight: 700, color: '#1d4ed8', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 10px' }}>
+            📍 Servimaniobras — Rutas desde Manzanillo
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: '8px' }}>
+            {defaultDestinations.map((dest) => {
+              const km = haversineKm(FIXED_ORIGIN.lat, FIXED_ORIGIN.lng, dest.lat, dest.lng)
+              const hrs = (km / 80).toFixed(1)
+              return (
+                <button
+                  key={dest.id}
+                  type="button"
+                  onClick={() => applyDefaultDestination(dest)}
+                  style={{
+                    background: '#fff', border: '1px solid #bfdbfe', borderRadius: '8px',
+                    padding: '10px 12px', cursor: 'pointer', textAlign: 'left',
+                    transition: 'all 0.15s', display: 'flex', flexDirection: 'column', gap: '3px',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = '#eff6ff'; e.currentTarget.style.borderColor = '#93c5fd' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#bfdbfe' }}
+                >
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: '#1e40af' }}>{dest.company}</span>
+                  <span style={{ fontSize: '11px', color: '#374151', lineHeight: '1.3' }}>{dest.name}</span>
+                  <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
+                    <span style={{ fontSize: '10px', background: '#dbeafe', color: '#1d4ed8', padding: '1px 7px', borderRadius: '99px', fontWeight: 600 }}>
+                      ~{km} km
+                    </span>
+                    <span style={{ fontSize: '10px', background: '#f0fdf4', color: '#166534', padding: '1px 7px', borderRadius: '99px', fontWeight: 600 }}>
+                      ~{hrs} h
+                    </span>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
 
         <div style={{ marginBottom: '18px' }}>
           <p style={{ fontSize: '12px', fontWeight: 600, color: '#6b7280', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
