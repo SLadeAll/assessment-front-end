@@ -407,8 +407,13 @@ function MexicanRouteAnalysis({ token }) {
       const headers = { 'Content-Type': 'application/json' }
       if (token) headers['Authorization'] = `Token ${token}`
 
+      // Use 2 km-sampled dense points so each tramo gets enough coordinate detail
+      // for the PDF map polyline. The 35 km analysis coords produce straight-line maps.
+      const pdfCoords = densePoints ? downsample(densePoints, 2) : routeData.coordinates
+
       const payload = {
-        ...routeData,
+        coordinates: pdfCoords,
+        references: routeData.references,
         route_label: routePreview?.label || 'Análisis de Ruta',
       }
 
