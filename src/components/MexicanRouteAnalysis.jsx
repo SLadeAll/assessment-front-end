@@ -204,6 +204,9 @@ function MexicanRouteAnalysis({ token }) {
 
   const [allReferences, setAllReferences] = useState(FALLBACK_REFERENCES)
   const [defaultDestinations, setDefaultDestinations] = useState(DEFAULT_DESTINATIONS)
+  // Pre-pinned coords [lon, lat] for origin/dest — avoids ORS geocoding ambiguity
+  const [pinnedOriginCoord, setPinnedOriginCoord] = useState(null)
+  const [pinnedDestCoord, setPinnedDestCoord] = useState(null)
 
   useEffect(() => {
     axios.get(`${API_BASE}/route-analysis/references/`)
@@ -354,7 +357,10 @@ function MexicanRouteAnalysis({ token }) {
 
     try {
       const allCities = [origin.trim(), ...stops.filter(s => s.trim()), destination.trim()]
-      const geocoded = await Promise.all(allCities.map(geocodeText))
+      const originCoord = pinnedOriginCoord ?? await geocodeText(origin.trim())
+      const stopCoords  = await Promise.all(stops.filter(s => s.trim()).map(geocodeText))
+      const destCoord   = pinnedDestCoord   ?? await geocodeText(destination.trim())
+      const geocoded = [originCoord, ...stopCoords, destCoord]
 
       const routeRes = await axios.post(
         `https://api.openrouteservice.org/v2/directions/driving-car/geojson?api_key=${ORS_KEY}`,
@@ -442,6 +448,8 @@ function MexicanRouteAnalysis({ token }) {
   const applyPredefined = (route) => {
     setOrigin(route.origin)
     setDestination(route.destination)
+    setPinnedOriginCoord(null)
+    setPinnedDestCoord(null)
     setStops(route.stops)
     setStopSuggs(route.stops.map(() => []))
     setRouteReady(false)
@@ -455,6 +463,8 @@ function MexicanRouteAnalysis({ token }) {
   const applyDefaultDestination = (dest) => {
     setOrigin(FIXED_ORIGIN.searchText)
     setDestination(dest.name)
+    setPinnedOriginCoord([FIXED_ORIGIN.lng, FIXED_ORIGIN.lat])
+    setPinnedDestCoord([dest.lng, dest.lat])
     setStops([])
     setStopSuggs([])
     setOriginSuggs([])
@@ -567,10 +577,11 @@ function MexicanRouteAnalysis({ token }) {
           value={origin}
           onChange={async (e) => {
             setOrigin(e.target.value); setRouteReady(false); setRoutePreview(null)
+            setPinnedOriginCoord(null)
             setOriginSuggs(await fetchSuggestions(e.target.value))
           }}
           suggestions={originSuggs}
-          onSelect={(s) => { setOrigin(s.label); setOriginSuggs([]) }}
+          onSelect={(s) => { setOrigin(s.label); setPinnedOriginCoord(null); setOriginSuggs([]) }}
           onClearSuggestions={() => setOriginSuggs([])}
         />
 
@@ -616,10 +627,11 @@ function MexicanRouteAnalysis({ token }) {
           value={destination}
           onChange={async (e) => {
             setDestination(e.target.value); setRouteReady(false); setRoutePreview(null)
+            setPinnedDestCoord(null)
             setDestSuggs(await fetchSuggestions(e.target.value))
           }}
           suggestions={destSuggs}
-          onSelect={(s) => { setDestination(s.label); setDestSuggs([]) }}
+          onSelect={(s) => { setDestination(s.label); setPinnedDestCoord(null); setDestSuggs([]) }}
           onClearSuggestions={() => setDestSuggs([])}
         />
 
