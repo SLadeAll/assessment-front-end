@@ -1,5 +1,5 @@
-import { MapContainer, TileLayer, Marker, Popup, Polyline, LayerGroup, useMap, useMapEvents } from 'react-leaflet'
-import { useEffect, useMemo, useState } from 'react'
+import { MapContainer, TileLayer, Marker, Popup, Polyline, LayerGroup, useMap } from 'react-leaflet'
+import { useEffect, useMemo } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import MapLayerControls from './MapLayerControls'
@@ -65,41 +65,6 @@ const createKmIcon = (km) =>
     iconAnchor: [3, 7],
   })
 
-const createClickMarkerIcon = () =>
-  L.divIcon({
-    className: '',
-    html: `<div style="
-      width:18px;height:18px;background:#0f172a;border-radius:50%;
-      border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.55);
-    "></div>`,
-    iconSize: [18, 18], iconAnchor: [9, 9], popupAnchor: [0, -11],
-  })
-
-// Listens for map clicks, snaps to nearest densePoint and reports km from
-// start and km remaining to the end of the route.
-function MapClickHandler({ densePoints, cumKm, totalKm, onResult }) {
-  useMapEvents({
-    click(e) {
-      if (!densePoints?.length || !cumKm?.length) return
-      const { lat, lng } = e.latlng
-      let minSq = Infinity, bestIdx = 0
-      for (let i = 0; i < densePoints.length; i++) {
-        const p = densePoints[i]
-        const sq = (lat - p.lat) ** 2 + (lng - p.lon) ** 2
-        if (sq < minSq) { minSq = sq; bestIdx = i }
-      }
-      onResult({
-        lat:       densePoints[bestIdx].lat,
-        lon:       densePoints[bestIdx].lon,
-        fromStart: Math.round(cumKm[bestIdx]),
-        toEnd:     Math.round(totalKm - cumKm[bestIdx]),
-        total:     Math.round(totalKm),
-      })
-    },
-  })
-  return null
-}
-
 const createIndicationIcon = (type) => {
   const meta = INDICATION_TYPES[type] || { icon: '?', color: '#6b7280' }
   return L.divIcon({
@@ -117,24 +82,18 @@ const createIndicationIcon = (type) => {
   })
 }
 
-// Snap a reference marker to the nearest point in routePoints so it sits
-// exactly on the ORS road centerline rather than at its static coordinate.
+// Snap a reference marker to the nearest point in routePoints.
+// Returns [lat, lon, nearestIndex] — callers that only need lat/lon can
+// destructure as const [lat, lon] = snapToRoute(...) safely.
 function snapToRoute(refLat, refLon, routePoints) {
-  if (!routePoints?.length) return [refLat, refLon]
-  let minSq = Infinity
-  let bestLat = refLat
-  let bestLon = refLon
-  for (const p of routePoints) {
-    const dlat = refLat - p.lat
-    const dlon = refLon - p.lon
-    const sq = dlat * dlat + dlon * dlon
-    if (sq < minSq) {
-      minSq = sq
-      bestLat = p.lat
-      bestLon = p.lon
-    }
+  if (!routePoints?.length) return [refLat, refLon, -1]
+  let minSq = Infinity, bestIdx = 0, bestLat = refLat, bestLon = refLon
+  for (let i = 0; i < routePoints.length; i++) {
+    const p = routePoints[i]
+    const sq = (refLat - p.lat) ** 2 + (refLon - p.lon) ** 2
+    if (sq < minSq) { minSq = sq; bestIdx = i; bestLat = p.lat; bestLon = p.lon }
   }
-  return [bestLat, bestLon]
+  return [bestLat, bestLon, bestIdx]
 }
 
 function FitBounds({ positions }) {
@@ -185,8 +144,6 @@ function RouteAnalysisMap({
   onToggleLayer,
   indicationsLoading,
 }) {
-  const [clickInfo, setClickInfo] = useState(null)
-
   // All useMemo calls BEFORE the early return — rules of hooks.
   const allPositions = useMemo(() => {
     const pts = densePoints?.length ? densePoints : coordinates
@@ -258,53 +215,6 @@ function RouteAnalysisMap({
           style={{ height: '520px', width: '100%', borderRadius: '10px' }}
         >
           <FitBounds positions={allPositions} />
-          <MapClickHandler
-            densePoints={densePoints}
-            cumKm={cumKm}
-            totalKm={totalKm}
-            onResult={setClickInfo}
-          />
-
-          {/* Click-to-km result marker */}
-          {clickInfo && (
-            <Marker
-              position={[clickInfo.lat, clickInfo.lon]}
-              icon={createClickMarkerIcon()}
-            >
-              <Popup autoPan={false}>
-                <div style={{ minWidth: '170px', lineHeight: '1.6' }}>
-                  <div style={{ fontWeight: 700, fontSize: '13px', marginBottom: '6px', color: '#0f172a' }}>
-                    📍 Punto seleccionado
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-                    <span style={{ color: '#374151' }}>Desde el inicio</span>
-                    <strong style={{ color: '#1d4ed8' }}>{clickInfo.fromStart} km</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-                    <span style={{ color: '#374151' }}>Hasta el final</span>
-                    <strong style={{ color: '#dc2626' }}>{clickInfo.toEnd} km</strong>
-                  </div>
-                  <div style={{
-                    marginTop: '6px', paddingTop: '6px', borderTop: '1px solid #e5e7eb',
-                    fontSize: '11px', color: '#6b7280', textAlign: 'right',
-                  }}>
-                    Total ruta: {clickInfo.total} km
-                  </div>
-                  <button
-                    onClick={() => setClickInfo(null)}
-                    style={{
-                      marginTop: '6px', width: '100%', fontSize: '11px', cursor: 'pointer',
-                      background: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: '4px',
-                      padding: '3px 0', color: '#6b7280',
-                    }}
-                  >
-                    Cerrar
-                  </button>
-                </div>
-              </Popup>
-            </Marker>
-          )}
-
           <TileLayer
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -348,9 +258,43 @@ function RouteAnalysisMap({
             </Marker>
           ))}
 
-          {/* Reference markers — snapped to the nearest dense-route point */}
+          {/* Reference markers — snapped to the nearest dense-route point.
+              Puntos de control (seguimiento) show km from start / to end. */}
           {inputRefs.map((ref, i) => {
-            const [lat, lon] = snapToRoute(ref.lat, ref.lon, densePoints)
+            const [lat, lon, nearIdx] = snapToRoute(ref.lat, ref.lon, densePoints)
+
+            if (ref.type === 'seguimiento' && nearIdx >= 0 && cumKm.length) {
+              const fromStart = Math.round(cumKm[nearIdx])
+              const toEnd     = Math.round(totalKm - cumKm[nearIdx])
+              const total     = Math.round(totalKm)
+              return (
+                <Marker key={`ref-${i}`} position={[lat, lon]} icon={createRefIcon(ref.type)}>
+                  <Popup>
+                    <div style={{ minWidth: '170px', lineHeight: '1.6' }}>
+                      <div style={{ fontWeight: 700, fontSize: '13px', marginBottom: '6px', color: '#0f172a' }}>
+                        {ref.name}
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
+                        <span style={{ color: '#374151' }}>Desde el inicio</span>
+                        <strong style={{ color: '#1d4ed8' }}>{fromStart} km</strong>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
+                        <span style={{ color: '#374151' }}>Hasta el final</span>
+                        <strong style={{ color: '#dc2626' }}>{toEnd} km</strong>
+                      </div>
+                      <div style={{
+                        marginTop: '6px', paddingTop: '6px',
+                        borderTop: '1px solid #e5e7eb',
+                        fontSize: '11px', color: '#6b7280', textAlign: 'right',
+                      }}>
+                        Total ruta: {total} km
+                      </div>
+                    </div>
+                  </Popup>
+                </Marker>
+              )
+            }
+
             return (
               <Marker key={`ref-${i}`} position={[lat, lon]} icon={createRefIcon(ref.type)}>
                 <Popup>
@@ -405,7 +349,7 @@ function RouteAnalysisMap({
       </div>
 
       <p style={{ fontSize: '11px', color: '#6b7280', margin: '6px 0 4px', textAlign: 'right' }}>
-        Haz clic en cualquier punto del mapa para ver los km desde el inicio y los que faltan
+        Haz clic en un <strong>Punto de control</strong> para ver los km desde el inicio y los que faltan
       </p>
       <div className="map-legend">
         {Object.entries(TRAZO_COLOR).map(([label, color]) => (
