@@ -1,5 +1,5 @@
-import { MapContainer, TileLayer, Marker, Popup, Polyline, LayerGroup, useMap } from 'react-leaflet'
-import { useEffect, useMemo } from 'react'
+import { MapContainer, TileLayer, Marker, Popup, Polyline, LayerGroup, useMap, useMapEvents } from 'react-leaflet'
+import { useEffect, useMemo, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import MapLayerControls from './MapLayerControls'
@@ -64,6 +64,41 @@ const createKmIcon = (km) =>
     iconSize: [54, 14],
     iconAnchor: [3, 7],
   })
+
+const createClickMarkerIcon = () =>
+  L.divIcon({
+    className: '',
+    html: `<div style="
+      width:18px;height:18px;background:#0f172a;border-radius:50%;
+      border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.55);
+    "></div>`,
+    iconSize: [18, 18], iconAnchor: [9, 9], popupAnchor: [0, -11],
+  })
+
+// Listens for map clicks, snaps to nearest densePoint and reports km from
+// start and km remaining to the end of the route.
+function MapClickHandler({ densePoints, cumKm, totalKm, onResult }) {
+  useMapEvents({
+    click(e) {
+      if (!densePoints?.length || !cumKm?.length) return
+      const { lat, lng } = e.latlng
+      let minSq = Infinity, bestIdx = 0
+      for (let i = 0; i < densePoints.length; i++) {
+        const p = densePoints[i]
+        const sq = (lat - p.lat) ** 2 + (lng - p.lon) ** 2
+        if (sq < minSq) { minSq = sq; bestIdx = i }
+      }
+      onResult({
+        lat:       densePoints[bestIdx].lat,
+        lon:       densePoints[bestIdx].lon,
+        fromStart: Math.round(cumKm[bestIdx]),
+        toEnd:     Math.round(totalKm - cumKm[bestIdx]),
+        total:     Math.round(totalKm),
+      })
+    },
+  })
+  return null
+}
 
 const createIndicationIcon = (type) => {
   const meta = INDICATION_TYPES[type] || { icon: '?', color: '#6b7280' }
@@ -150,6 +185,8 @@ function RouteAnalysisMap({
   onToggleLayer,
   indicationsLoading,
 }) {
+  const [clickInfo, setClickInfo] = useState(null)
+
   // All useMemo calls BEFORE the early return — rules of hooks.
   const allPositions = useMemo(() => {
     const pts = densePoints?.length ? densePoints : coordinates
@@ -163,6 +200,19 @@ function RouteAnalysisMap({
     const pts = densePoints?.length ? densePoints : coordinates
     return buildTramoPositions(tramos, pts)
   }, [tramos, densePoints, coordinates])
+
+  // Cumulative km array — one entry per densePoint, used by MapClickHandler.
+  const { cumKm, totalKm } = useMemo(() => {
+    if (!densePoints?.length) return { cumKm: [], totalKm: 0 }
+    const cumKm = [0]
+    for (let i = 1; i < densePoints.length; i++) {
+      const p = densePoints[i], q = densePoints[i - 1]
+      const dlat = (p.lat - q.lat) * 111
+      const dlon = (p.lon - q.lon) * 111 * Math.cos(q.lat * Math.PI / 180)
+      cumKm.push(cumKm[i - 1] + Math.sqrt(dlat * dlat + dlon * dlon))
+    }
+    return { cumKm, totalKm: cumKm[cumKm.length - 1] }
+  }, [densePoints])
 
   // One small label every 50 km along the route.
   const kmMarkers = useMemo(() => {
@@ -208,6 +258,53 @@ function RouteAnalysisMap({
           style={{ height: '520px', width: '100%', borderRadius: '10px' }}
         >
           <FitBounds positions={allPositions} />
+          <MapClickHandler
+            densePoints={densePoints}
+            cumKm={cumKm}
+            totalKm={totalKm}
+            onResult={setClickInfo}
+          />
+
+          {/* Click-to-km result marker */}
+          {clickInfo && (
+            <Marker
+              position={[clickInfo.lat, clickInfo.lon]}
+              icon={createClickMarkerIcon()}
+            >
+              <Popup autoPan={false}>
+                <div style={{ minWidth: '170px', lineHeight: '1.6' }}>
+                  <div style={{ fontWeight: 700, fontSize: '13px', marginBottom: '6px', color: '#0f172a' }}>
+                    📍 Punto seleccionado
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
+                    <span style={{ color: '#374151' }}>Desde el inicio</span>
+                    <strong style={{ color: '#1d4ed8' }}>{clickInfo.fromStart} km</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
+                    <span style={{ color: '#374151' }}>Hasta el final</span>
+                    <strong style={{ color: '#dc2626' }}>{clickInfo.toEnd} km</strong>
+                  </div>
+                  <div style={{
+                    marginTop: '6px', paddingTop: '6px', borderTop: '1px solid #e5e7eb',
+                    fontSize: '11px', color: '#6b7280', textAlign: 'right',
+                  }}>
+                    Total ruta: {clickInfo.total} km
+                  </div>
+                  <button
+                    onClick={() => setClickInfo(null)}
+                    style={{
+                      marginTop: '6px', width: '100%', fontSize: '11px', cursor: 'pointer',
+                      background: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: '4px',
+                      padding: '3px 0', color: '#6b7280',
+                    }}
+                  >
+                    Cerrar
+                  </button>
+                </div>
+              </Popup>
+            </Marker>
+          )}
+
           <TileLayer
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -307,6 +404,9 @@ function RouteAnalysisMap({
         )}
       </div>
 
+      <p style={{ fontSize: '11px', color: '#6b7280', margin: '6px 0 4px', textAlign: 'right' }}>
+        Haz clic en cualquier punto del mapa para ver los km desde el inicio y los que faltan
+      </p>
       <div className="map-legend">
         {Object.entries(TRAZO_COLOR).map(([label, color]) => (
           <div key={label} className="legend-item">
