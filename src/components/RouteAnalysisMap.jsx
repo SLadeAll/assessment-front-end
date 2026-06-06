@@ -17,6 +17,13 @@ const REF_COLOR  = { caseta: '#ef4444', paradero: '#0ea5e9', gasolinera: '#f9731
 const REF_LETTER = { caseta: 'C',       paradero: 'P',       gasolinera: 'G',       rampa: 'R',       seguimiento: '' }
 const REF_LABEL  = { caseta: 'Caseta',  paradero: 'Paradero', gasolinera: 'Gasolinera', rampa: 'Rampa', seguimiento: 'Punto de control' }
 
+const EMRG_CATS = [
+  { key: 'ambulancia',       label: 'Ambulancia / Cruz Roja' },
+  { key: 'guardia_caminos',  label: 'Guardia de Caminos' },
+  { key: 'guardia_nacional', label: 'Guardia Nacional' },
+  { key: 'policia_estatal',  label: 'Policía Estatal' },
+]
+
 const createNumberIcon = (num) =>
   L.divIcon({
     className: '',
@@ -171,6 +178,17 @@ function RouteAnalysisMap({
     return { cumKm, totalKm: cumKm[cumKm.length - 1] }
   }, [densePoints])
 
+  // Maps each tramo's km-start position to its emergency contacts dict.
+  const tramoKmRanges = useMemo(() => {
+    if (!tramos?.length || !cumKm.length || !densePoints?.length) return []
+    return tramos
+      .map(t => {
+        const [,, idx] = snapToRoute(t.posicion_inicial.lat, t.posicion_inicial.lon, densePoints)
+        return { kmStart: idx >= 0 ? cumKm[idx] : 0, contacts: t.emergency_contacts || null }
+      })
+      .sort((a, b) => a.kmStart - b.kmStart)
+  }, [tramos, cumKm, densePoints])
+
   // One small label every 50 km along the route.
   const kmMarkers = useMemo(() => {
     if (!densePoints?.length) return []
@@ -267,13 +285,26 @@ function RouteAnalysisMap({
               const fromStart = Math.round(cumKm[nearIdx])
               const toEnd     = Math.round(totalKm - cumKm[nearIdx])
               const total     = Math.round(totalKm)
+
+              // Find the emergency contacts for the tramo that contains this km position
+              let contacts = null
+              if (tramoKmRanges.length) {
+                contacts = tramoKmRanges[0].contacts
+                for (const r of tramoKmRanges) {
+                  if (r.kmStart <= fromStart) contacts = r.contacts
+                  else break
+                }
+              }
+
               return (
                 <Marker key={`ref-${i}`} position={[lat, lon]} icon={createRefIcon(ref.type)}>
                   <Popup>
-                    <div style={{ minWidth: '170px', lineHeight: '1.6' }}>
+                    <div style={{ minWidth: '260px', lineHeight: '1.5' }}>
                       <div style={{ fontWeight: 700, fontSize: '13px', marginBottom: '6px', color: '#0f172a' }}>
                         {ref.name}
                       </div>
+
+                      {/* km info */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
                         <span style={{ color: '#374151' }}>Desde el inicio</span>
                         <strong style={{ color: '#1d4ed8' }}>{fromStart} km</strong>
@@ -282,13 +313,38 @@ function RouteAnalysisMap({
                         <span style={{ color: '#374151' }}>Hasta el final</span>
                         <strong style={{ color: '#dc2626' }}>{toEnd} km</strong>
                       </div>
-                      <div style={{
-                        marginTop: '6px', paddingTop: '6px',
-                        borderTop: '1px solid #e5e7eb',
-                        fontSize: '11px', color: '#6b7280', textAlign: 'right',
-                      }}>
+                      <div style={{ fontSize: '11px', color: '#6b7280', textAlign: 'right', marginBottom: '6px' }}>
                         Total ruta: {total} km
                       </div>
+
+                      {/* Emergency contacts */}
+                      {contacts && (
+                        <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '6px' }}>
+                          <div style={{
+                            fontSize: '10px', fontWeight: 700, color: '#dc2626',
+                            textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px',
+                          }}>
+                            Emergencias — {contacts.estado}
+                          </div>
+                          {EMRG_CATS.map(({ key, label }) => {
+                            const entries = (contacts[key] || []).slice(0, 2)
+                            if (!entries.length) return null
+                            return (
+                              <div key={key} style={{ marginBottom: '5px' }}>
+                                <div style={{ fontSize: '10px', fontWeight: 600, color: '#6b7280', marginBottom: '1px' }}>
+                                  {label}
+                                </div>
+                                {entries.map((e, ei) => (
+                                  <div key={ei} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', gap: '8px' }}>
+                                    <span style={{ color: '#374151', flex: 1 }}>{e.nombre}</span>
+                                    <strong style={{ color: '#1d4ed8', whiteSpace: 'nowrap' }}>{e.telefono}</strong>
+                                  </div>
+                                ))}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
                     </div>
                   </Popup>
                 </Marker>
