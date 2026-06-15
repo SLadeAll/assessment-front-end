@@ -184,7 +184,11 @@ function RouteAnalysisMap({
     return tramos
       .map(t => {
         const [,, idx] = snapToRoute(t.posicion_inicial.lat, t.posicion_inicial.lon, densePoints)
-        return { kmStart: idx >= 0 ? cumKm[idx] : 0, contacts: t.emergency_contacts || null }
+        return {
+          kmStart: idx >= 0 ? cumKm[idx] : 0,
+          contacts: t.emergency_contacts || null,
+          carretera: t.carretera || null,
+        }
       })
       .sort((a, b) => a.kmStart - b.kmStart)
   }, [tramos, cumKm, densePoints])
@@ -286,12 +290,14 @@ function RouteAnalysisMap({
               const toEnd     = Math.round(totalKm - cumKm[nearIdx])
               const total     = Math.round(totalKm)
 
-              // Find the emergency contacts for the tramo that contains this km position
+              // Find the tramo that contains this km position (emergency contacts + carretera)
               let contacts = null
+              let carretera = null
               if (tramoKmRanges.length) {
-                contacts = tramoKmRanges[0].contacts
+                contacts   = tramoKmRanges[0].contacts
+                carretera  = tramoKmRanges[0].carretera
                 for (const r of tramoKmRanges) {
-                  if (r.kmStart <= fromStart) contacts = r.contacts
+                  if (r.kmStart <= fromStart) { contacts = r.contacts; carretera = r.carretera }
                   else break
                 }
               }
@@ -303,6 +309,14 @@ function RouteAnalysisMap({
                       <div style={{ fontWeight: 700, fontSize: '13px', marginBottom: '6px', color: '#0f172a' }}>
                         {ref.name}
                       </div>
+
+                      {/* Carretera */}
+                      {carretera && (
+                        <div style={{ fontSize: '12px', marginBottom: '6px' }}>
+                          <span style={{ color: '#374151' }}>Carretera: </span>
+                          <strong style={{ color: '#0f172a' }}>{carretera}</strong>
+                        </div>
+                      )}
 
                       {/* km info */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
