@@ -185,9 +185,10 @@ function RouteAnalysisMap({
       .map(t => {
         const [,, idx] = snapToRoute(t.posicion_inicial.lat, t.posicion_inicial.lon, densePoints)
         return {
-          kmStart: idx >= 0 ? cumKm[idx] : 0,
-          contacts: t.emergency_contacts || null,
-          carretera: t.carretera || null,
+          kmStart:       idx >= 0 ? cumKm[idx] : 0,
+          contacts:      t.emergency_contacts   || null,
+          carretera:     t.carretera            || null,
+          kmEnCarretera: t.km_en_carretera      ?? null,
         }
       })
       .sort((a, b) => a.kmStart - b.kmStart)
@@ -291,14 +292,15 @@ function RouteAnalysisMap({
               const total     = Math.round(totalKm)
 
               // Find the tramo that contains this km position (emergency contacts + carretera)
-              let contacts = null
-              let carretera = null
+              let contacts = null, carretera = null, kmEnCarretera = null
               if (tramoKmRanges.length) {
-                contacts   = tramoKmRanges[0].contacts
-                carretera  = tramoKmRanges[0].carretera
+                contacts      = tramoKmRanges[0].contacts
+                carretera     = tramoKmRanges[0].carretera
+                kmEnCarretera = tramoKmRanges[0].kmEnCarretera
                 for (const r of tramoKmRanges) {
-                  if (r.kmStart <= fromStart) { contacts = r.contacts; carretera = r.carretera }
-                  else break
+                  if (r.kmStart <= fromStart) {
+                    contacts = r.contacts; carretera = r.carretera; kmEnCarretera = r.kmEnCarretera
+                  } else break
                 }
               }
 
@@ -310,11 +312,18 @@ function RouteAnalysisMap({
                         {ref.name}
                       </div>
 
-                      {/* Carretera */}
+                      {/* Carretera + km del hito */}
                       {carretera && (
                         <div style={{ fontSize: '12px', marginBottom: '6px' }}>
                           <span style={{ color: '#374151' }}>Carretera: </span>
-                          <strong style={{ color: '#0f172a' }}>{carretera}</strong>
+                          <strong style={{ color: '#0f172a' }}>
+                            {carretera}
+                            {kmEnCarretera !== null && (
+                              <span style={{ color: '#059669', marginLeft: '6px' }}>
+                                · Km {Math.round(kmEnCarretera)}
+                              </span>
+                            )}
+                          </strong>
                         </div>
                       )}
 
