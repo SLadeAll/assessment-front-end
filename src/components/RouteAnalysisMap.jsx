@@ -17,6 +17,16 @@ const REF_COLOR  = { caseta: '#ef4444', paradero: '#0ea5e9', gasolinera: '#f9731
 const REF_LETTER = { caseta: 'C',       paradero: 'P',       gasolinera: 'G',       rampa: 'R',       seguimiento: '' }
 const REF_LABEL  = { caseta: 'Caseta',  paradero: 'Paradero', gasolinera: 'Gasolinera', rampa: 'Rampa', seguimiento: 'Punto de control' }
 
+function toDMS(decimal, pos, neg) {
+  const sign = decimal >= 0 ? pos : neg
+  const abs  = Math.abs(decimal)
+  const deg  = Math.floor(abs)
+  const mFrac = (abs - deg) * 60
+  const min  = Math.floor(mFrac)
+  const sec  = ((mFrac - min) * 60).toFixed(1)
+  return `${deg}°${String(min).padStart(2, '0')}'${sec}"${sign}`
+}
+
 const EMRG_CATS = [
   { key: 'ambulancia',       label: 'Ambulancia / Cruz Roja' },
   { key: 'guardia_caminos',  label: 'Guardia de Caminos' },
@@ -311,8 +321,16 @@ function RouteAnalysisMap({
                 <Marker key={`ref-${i}`} position={[lat, lon]} icon={createRefIcon(ref.type)}>
                   <Popup>
                     <div style={{ minWidth: '260px', lineHeight: '1.5' }}>
-                      <div style={{ fontWeight: 700, fontSize: '13px', marginBottom: '6px', color: '#0f172a' }}>
+                      <div style={{ fontWeight: 700, fontSize: '13px', marginBottom: '2px', color: '#0f172a' }}>
                         {ref.name}
+                      </div>
+
+                      {/* Coordenadas */}
+                      <div style={{
+                        fontSize: '11px', color: '#475569', marginBottom: '6px',
+                        fontFamily: 'monospace', letterSpacing: '0.01em',
+                      }}>
+                        {toDMS(lat, 'N', 'S')} &nbsp; {toDMS(lon, 'E', 'O')}
                       </div>
 
                       {/* Carretera + km en la vía */}
