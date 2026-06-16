@@ -185,10 +185,11 @@ function RouteAnalysisMap({
       .map(t => {
         const [,, idx] = snapToRoute(t.posicion_inicial.lat, t.posicion_inicial.lon, densePoints)
         return {
-          kmStart:       idx >= 0 ? cumKm[idx] : 0,
-          contacts:      t.emergency_contacts   || null,
-          carretera:     t.carretera            || null,
-          kmEnCarretera: t.km_en_carretera      ?? null,
+          kmStart:          idx >= 0 ? cumKm[idx] : 0,
+          contacts:         t.emergency_contacts          || null,
+          carretera:        t.carretera                   || null,
+          kmEnCarretera:    t.km_en_carretera             ?? null,
+          kmApprox:         t.km_en_carretera_approx      ?? true,
         }
       })
       .sort((a, b) => a.kmStart - b.kmStart)
@@ -292,14 +293,16 @@ function RouteAnalysisMap({
               const total     = Math.round(totalKm)
 
               // Find the tramo that contains this km position (emergency contacts + carretera)
-              let contacts = null, carretera = null, kmEnCarretera = null
+              let contacts = null, carretera = null, kmEnCarretera = null, kmApprox = true
               if (tramoKmRanges.length) {
                 contacts      = tramoKmRanges[0].contacts
                 carretera     = tramoKmRanges[0].carretera
                 kmEnCarretera = tramoKmRanges[0].kmEnCarretera
+                kmApprox      = tramoKmRanges[0].kmApprox
                 for (const r of tramoKmRanges) {
                   if (r.kmStart <= fromStart) {
-                    contacts = r.contacts; carretera = r.carretera; kmEnCarretera = r.kmEnCarretera
+                    contacts = r.contacts; carretera = r.carretera
+                    kmEnCarretera = r.kmEnCarretera; kmApprox = r.kmApprox
                   } else break
                 }
               }
@@ -312,15 +315,15 @@ function RouteAnalysisMap({
                         {ref.name}
                       </div>
 
-                      {/* Carretera + km del hito */}
+                      {/* Carretera + km en la vía */}
                       {carretera && (
                         <div style={{ fontSize: '12px', marginBottom: '6px' }}>
                           <span style={{ color: '#374151' }}>Carretera: </span>
                           <strong style={{ color: '#0f172a' }}>
                             {carretera}
                             {kmEnCarretera !== null && (
-                              <span style={{ color: '#059669', marginLeft: '6px' }}>
-                                · Km {Math.round(kmEnCarretera)}
+                              <span style={{ color: kmApprox ? '#b45309' : '#059669', marginLeft: '6px' }}>
+                                · {kmApprox ? '~' : ''}Km {Math.round(kmEnCarretera)}
                               </span>
                             )}
                           </strong>
