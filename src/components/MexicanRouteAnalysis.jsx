@@ -210,6 +210,7 @@ function MexicanRouteAnalysis({ token }) {
   // Pre-pinned coords [lon, lat] for origin/dest — avoids ORS geocoding ambiguity
   const [pinnedOriginCoord, setPinnedOriginCoord] = useState(null)
   const [pinnedDestCoord, setPinnedDestCoord] = useState(null)
+  const [pinnedViaPoints, setPinnedViaPoints] = useState([])
 
   useEffect(() => {
     axios.get(`${API_BASE}/route-analysis/references/`)
@@ -363,7 +364,7 @@ function MexicanRouteAnalysis({ token }) {
       const originCoord = pinnedOriginCoord ?? await geocodeText(origin.trim())
       const stopCoords  = await Promise.all(stops.filter(s => s.trim()).map(geocodeText))
       const destCoord   = pinnedDestCoord   ?? await geocodeText(destination.trim())
-      const geocoded = [originCoord, ...stopCoords, destCoord]
+      const geocoded = [originCoord, ...stopCoords, ...pinnedViaPoints, destCoord]
 
       const routeRes = await axios.post(
         `https://api.openrouteservice.org/v2/directions/driving-car/geojson?api_key=${ORS_KEY}`,
@@ -527,6 +528,7 @@ function MexicanRouteAnalysis({ token }) {
     setDestination(route.destination)
     setPinnedOriginCoord(null)
     setPinnedDestCoord(null)
+    setPinnedViaPoints([])
     setStops(route.stops)
     setStopSuggs(route.stops.map(() => []))
     setRouteReady(false)
@@ -542,6 +544,7 @@ function MexicanRouteAnalysis({ token }) {
     setDestination(dest.name)
     setPinnedOriginCoord([FIXED_ORIGIN.lng, FIXED_ORIGIN.lat])
     setPinnedDestCoord([dest.lng, dest.lat])
+    setPinnedViaPoints(dest.viaPoints || [])
     setStops([])
     setStopSuggs([])
     setOriginSuggs([])
@@ -704,11 +707,11 @@ function MexicanRouteAnalysis({ token }) {
           value={destination}
           onChange={async (e) => {
             setDestination(e.target.value); setRouteReady(false); setRoutePreview(null)
-            setPinnedDestCoord(null)
+            setPinnedDestCoord(null); setPinnedViaPoints([])
             setDestSuggs(await fetchSuggestions(e.target.value))
           }}
           suggestions={destSuggs}
-          onSelect={(s) => { setDestination(s.label); setPinnedDestCoord(null); setDestSuggs([]) }}
+          onSelect={(s) => { setDestination(s.label); setPinnedDestCoord(null); setPinnedViaPoints([]); setDestSuggs([]) }}
           onClearSuggestions={() => setDestSuggs([])}
         />
 
