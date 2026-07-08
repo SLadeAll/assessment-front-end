@@ -249,7 +249,8 @@ export const FIXED_ORIGIN = {
 export const DEFAULT_DESTINATIONS = [
   { id: 1, name: 'Atotonilco, Estado de México',   lat: 19.9207515,  lng: -99.251266,   company: 'WEG' },
   { id: 2, name: 'Huehuetoca, Estado de México',   lat: 19.8539528,  lng: -99.2380468,  company: 'WEG Voltran' },
-  { id: 3, name: 'Tizayuca, Hidalgo',              lat: 19.8223601,  lng: -98.975169,   company: 'Voltran' },
+  { id: 3, name: 'Tizayuca, Hidalgo',              lat: 19.8223601,  lng: -98.975169,   company: 'Voltran',
+    viaPoints: [[-99.338306, 20.084417]] },
   { id: 4, name: 'Santa Catarina, Nuevo León',     lat: 25.7038605,  lng: -100.4958117, company: 'Marathon' },
   { id: 5, name: 'Tecoman, Colima',                lat: 18.9521368,  lng: -103.8914258, company: 'Solarever' },
   { id: 6, name: 'Ciénega de Flores, Nuevo León',  lat: 25.9355552,  lng: -100.2052263, company: 'Volvo' },
