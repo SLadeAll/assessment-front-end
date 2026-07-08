@@ -198,6 +198,8 @@ function MexicanRouteAnalysis({ token }) {
   const [error, setError] = useState('')
   const [pdfLoading, setPdfLoading] = useState(false)
   const [pdfSummaryLoading, setPdfSummaryLoading] = useState(false)
+  const [pptxLoading, setPptxLoading] = useState(false)
+  const [pptxSummaryLoading, setPptxSummaryLoading] = useState(false)
 
   const [indications, setIndications] = useState([])
   const [indicationsLoading, setIndicationsLoading] = useState(false)
@@ -485,6 +487,40 @@ function MexicanRouteAnalysis({ token }) {
       setPdfSummaryLoading(false)
     }
   }
+
+  const _exportPptx = async (endpoint, fallbackName, setLoading) => {
+    if (!routeData) { setError('Primero obtén la ruta antes de exportar.'); return }
+    setLoading(true)
+    setError('')
+    try {
+      const headers = { 'Content-Type': 'application/json' }
+      if (token) headers['Authorization'] = `Token ${token}`
+      const pdfCoords = densePoints ? downsample(densePoints, 2) : routeData.coordinates
+      const payload = {
+        coordinates: pdfCoords,
+        references: routeData.references,
+        route_label: routePreview?.label || 'Análisis de Ruta',
+      }
+      const response = await axios.post(`${API_BASE}/route-analysis/${endpoint}`, payload,
+        { headers, responseType: 'blob' })
+      const disposition = response.headers['content-disposition'] || ''
+      const match = disposition.match(/filename="?([^"]+)"?/)
+      const filename = match ? match[1] : fallbackName
+      const url = URL.createObjectURL(new Blob([response.data],
+        { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' }))
+      const a = document.createElement('a')
+      a.href = url; a.download = filename
+      document.body.appendChild(a); a.click(); a.remove()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      setError(err.message || 'Error al generar el PowerPoint.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleExportPptx        = () => _exportPptx('export-pptx/',         `analisis_riesgos_${Date.now()}.pptx`, setPptxLoading)
+  const handleExportSummaryPptx = () => _exportPptx('export-pptx-summary/', `resumen_riesgos_${Date.now()}.pptx`,  setPptxSummaryLoading)
 
   const applyPredefined = (route) => {
     setOrigin(route.origin)
@@ -787,6 +823,47 @@ function MexicanRouteAnalysis({ token }) {
             <span style={{ fontSize: '12px', color: '#6b7280' }}>
               Generando resumen por estado…
             </span>
+          )}
+          <button
+            type="button" onClick={handleExportPptx}
+            disabled={loading || pptxLoading || !routeData}
+            style={{
+              background: (pptxLoading || !routeData) ? '#9ca3af' : '#d97706',
+              color: '#fff', border: 'none', borderRadius: '6px',
+              padding: '8px 18px', fontWeight: 600, fontSize: '14px',
+              cursor: (pptxLoading || !routeData) ? 'not-allowed' : 'pointer',
+              display: 'flex', alignItems: 'center', gap: '7px',
+            }}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24"
+              fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8m-4-4v4"/>
+            </svg>
+            {pptxLoading ? 'Generando PPT…' : 'PPT Detallado'}
+          </button>
+          <button
+            type="button" onClick={handleExportSummaryPptx}
+            disabled={loading || pptxSummaryLoading || !routeData}
+            style={{
+              background: (pptxSummaryLoading || !routeData) ? '#9ca3af' : '#b45309',
+              color: '#fff', border: 'none', borderRadius: '6px',
+              padding: '8px 18px', fontWeight: 600, fontSize: '14px',
+              cursor: (pptxSummaryLoading || !routeData) ? 'not-allowed' : 'pointer',
+              display: 'flex', alignItems: 'center', gap: '7px',
+            }}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24"
+              fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8m-4-4v4"/>
+              <line x1="9" y1="10" x2="15" y2="10"/>
+            </svg>
+            {pptxSummaryLoading ? 'Generando PPT…' : 'PPT Resumen'}
+          </button>
+          {pptxLoading && (
+            <span style={{ fontSize: '12px', color: '#6b7280' }}>Generando presentación…</span>
+          )}
+          {pptxSummaryLoading && (
+            <span style={{ fontSize: '12px', color: '#6b7280' }}>Generando presentación resumen…</span>
           )}
         </div>
       </div>
