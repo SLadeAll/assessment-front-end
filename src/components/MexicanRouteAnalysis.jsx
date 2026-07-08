@@ -197,6 +197,7 @@ function MexicanRouteAnalysis({ token }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [pdfLoading, setPdfLoading] = useState(false)
+  const [pdfSummaryLoading, setPdfSummaryLoading] = useState(false)
 
   const [indications, setIndications] = useState([])
   const [indicationsLoading, setIndicationsLoading] = useState(false)
@@ -442,6 +443,46 @@ function MexicanRouteAnalysis({ token }) {
       setError(err.message || 'Error al generar el PDF.')
     } finally {
       setPdfLoading(false)
+    }
+  }
+
+  const handleExportSummaryPdf = async () => {
+    if (!routeData) { setError('Primero obtén la ruta antes de exportar.'); return }
+
+    setPdfSummaryLoading(true)
+    setError('')
+
+    try {
+      const headers = { 'Content-Type': 'application/json' }
+      if (token) headers['Authorization'] = `Token ${token}`
+
+      const pdfCoords = densePoints ? downsample(densePoints, 2) : routeData.coordinates
+
+      const payload = {
+        coordinates: pdfCoords,
+        references: routeData.references,
+        route_label: routePreview?.label || 'Análisis de Ruta',
+      }
+
+      const response = await axios.post(
+        `${API_BASE}/route-analysis/export-pdf-summary/`,
+        payload,
+        { headers, responseType: 'blob' },
+      )
+
+      const disposition = response.headers['content-disposition'] || ''
+      const match = disposition.match(/filename="?([^"]+)"?/)
+      const filename = match ? match[1] : `resumen_riesgos_${Date.now()}.pdf`
+
+      const url = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
+      const a = document.createElement('a')
+      a.href = url; a.download = filename
+      document.body.appendChild(a); a.click(); a.remove()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      setError(err.message || 'Error al generar el PDF resumen.')
+    } finally {
+      setPdfSummaryLoading(false)
     }
   }
 
@@ -717,9 +758,34 @@ function MexicanRouteAnalysis({ token }) {
             </svg>
             {pdfLoading ? 'Generando PDF…' : 'Exportar PDF'}
           </button>
+          <button
+            type="button" onClick={handleExportSummaryPdf}
+            disabled={loading || pdfSummaryLoading || !routeData}
+            style={{
+              background: (pdfSummaryLoading || !routeData) ? '#9ca3af' : '#7c3aed',
+              color: '#fff', border: 'none', borderRadius: '6px',
+              padding: '8px 18px', fontWeight: 600, fontSize: '14px',
+              cursor: (pdfSummaryLoading || !routeData) ? 'not-allowed' : 'pointer',
+              display: 'flex', alignItems: 'center', gap: '7px',
+            }}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24"
+              fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+              <polyline points="10 9 9 9 8 9"/>
+            </svg>
+            {pdfSummaryLoading ? 'Generando Resumen…' : 'Exportar Resumen'}
+          </button>
           {pdfLoading && (
             <span style={{ fontSize: '12px', color: '#6b7280' }}>
               Generando mapas y tabla PROCESO…
+            </span>
+          )}
+          {pdfSummaryLoading && (
+            <span style={{ fontSize: '12px', color: '#6b7280' }}>
+              Generando resumen por estado…
             </span>
           )}
         </div>
