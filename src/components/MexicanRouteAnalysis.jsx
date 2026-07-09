@@ -223,7 +223,14 @@ function MexicanRouteAnalysis({ token }) {
     axios.get(`${API_BASE}/route-analysis/default-destinations/`)
       .then(r => {
         const dests = r.data.destinations || []
-        if (dests.length) setDefaultDestinations(dests)
+        if (dests.length) {
+          // Merge viaPoints from static config — the backend doesn't store them
+          const merged = dests.map(d => {
+            const s = DEFAULT_DESTINATIONS.find(x => x.name === d.name || x.id === d.id)
+            return s?.viaPoints ? { ...d, viaPoints: s.viaPoints } : d
+          })
+          setDefaultDestinations(merged)
+        }
       })
       .catch(() => {})
   }, [])
